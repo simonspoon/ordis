@@ -51,25 +51,6 @@ body {
   letter-spacing: 0.5px;
 }
 
-.titlebar-cwd {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  cursor: pointer;
-  padding: 2px 8px;
-  border-radius: 4px;
-  max-width: 400px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  -webkit-app-region: no-drag;
-}
-.titlebar-cwd:hover {
-  background: var(--border);
-  color: var(--text-secondary);
-}
 
 /* Pane bar */
 .pane-bar {
@@ -155,9 +136,44 @@ body {
   position: relative;
 }
 
+.terminal-wrapper {
+  position: absolute;
+  inset: 0;
+  flex-direction: column;
+}
+
+.pane-toolbar {
+  display: flex;
+  align-items: center;
+  padding: 2px 8px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  min-height: 24px;
+}
+
+.pane-cwd {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 1px 6px;
+  border-radius: 3px;
+  max-width: 500px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pane-cwd:hover {
+  background: var(--border);
+  color: var(--text-secondary);
+}
+
 .terminal-pane {
   width: 100%;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   padding: 4px;
 }
 

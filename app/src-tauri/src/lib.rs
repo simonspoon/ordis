@@ -32,7 +32,14 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_pty::init())
         .manage(AppState {
-            cwd: Mutex::new(std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"))),
+            cwd: Mutex::new({
+                let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
+                if cwd.as_os_str() == "/" {
+                    dirs::home_dir().unwrap_or(cwd)
+                } else {
+                    cwd
+                }
+            }),
         })
         .invoke_handler(tauri::generate_handler![get_cwd, set_cwd,])
         .run(tauri::generate_context!())

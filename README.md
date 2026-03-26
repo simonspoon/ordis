@@ -1,10 +1,10 @@
 # Ordis
 
-Desktop interface for [Claude Code](https://claude.ai/claude-code). Renders Claude Code output in a chat UI with markdown, syntax highlighting, collapsible tool calls, and streaming.
+Desktop interface for [Claude Code](https://claude.ai/claude-code). Embeds Claude Code in a multi-pane terminal UI with per-pane working directories.
 
 ## How It Works
 
-Ordis wraps the Claude Code CLI using `--output-format stream-json`. Each message spawns a `claude -p` process; subsequent messages resume the session via `--resume <session_id>`.
+Ordis spawns Claude Code inside embedded PTY terminals (xterm.js). Each pane runs `claude --dangerously-skip-permissions` as a child process via `tauri-pty`, giving you the full Claude Code terminal experience in a native desktop window.
 
 ## Requirements
 
@@ -25,29 +25,20 @@ pnpm tauri dev
 
 ```
 ordis/
-├── crates/
-│   ├── protocol/    # Serde types for Claude Code NDJSON events
-│   └── process/     # Child process spawn, stdout reader, event channel
 └── app/
-    ├── src-tauri/   # Tauri backend — AppState, commands, event forwarding
-    └── src/         # SolidJS frontend — chat UI, markdown, shiki highlighting
+    ├── src-tauri/   # Tauri backend — AppState, cwd commands, PTY plugin
+    └── src/         # SolidJS frontend — pane management, xterm.js terminals
 ```
 
-**Rust backend** spawns `claude -p --output-format stream-json --include-partial-messages` as a child process per turn. NDJSON events are parsed into typed `ClaudeEvent` variants and forwarded to the frontend via Tauri events.
+**Rust backend** manages a shared working directory state and exposes `get_cwd`/`set_cwd` commands. The `tauri-plugin-pty` plugin provides PTY support for embedded terminals.
 
-**SolidJS frontend** accumulates streaming deltas into a reactive store and renders messages with:
-- Markdown with syntax-highlighted code blocks (shiki)
-- Collapsible thinking sections
-- Collapsible tool call/result blocks (color-coded by tool type)
-- Cost and token tracking in the status bar
+**SolidJS frontend** manages multiple terminal panes via a reactive store. Each pane embeds an xterm.js terminal (with WebGL rendering) connected to a PTY process running Claude Code.
 
 ## Features
 
-- Streaming chat interface
-- Session continuity via `--resume`
-- Skip Permissions toggle (`--dangerously-skip-permissions`)
-- New Session button
-- Stop generation
+- Embedded terminal running Claude Code via PTY
+- Multi-pane support — run multiple Claude sessions side by side
+- Per-pane working directory with folder picker
 - Dark theme
 
 ## License

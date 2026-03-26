@@ -1,9 +1,10 @@
-import { onMount, onCleanup } from "solid-js";
+import { onMount, onCleanup, createSignal } from "solid-js";
 import { Terminal } from "@xterm/xterm";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { FitAddon } from "@xterm/addon-fit";
 import { spawn } from "tauri-pty";
-import { cwd, closePane } from "../lib/store";
+import { open } from "@tauri-apps/plugin-dialog";
+import { panes, setPaneCwd, closePane } from "../lib/store";
 import "@xterm/xterm/css/xterm.css";
 
 interface Props {
@@ -17,6 +18,21 @@ export default function TerminalPane(props: Props) {
   let fitAddon: FitAddon | null = null;
   let pty: ReturnType<typeof spawn> | null = null;
   let resizeObserver: ResizeObserver | null = null;
+
+  const paneCwd = () => panes[props.paneId]?.cwd || "";
+
+  const changeFolder = async () => {
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      defaultPath: paneCwd() || undefined,
+      title: "Choose working directory",
+    });
+    if (selected && pty) {
+      setPaneCwd(props.paneId, selected);
+      pty.write(`cd ${shellEscape(selected)}\n`);
+    }
+  };
 
   onMount(() => {
     term = new Terminal({
@@ -68,7 +84,7 @@ export default function TerminalPane(props: Props) {
     fitAddon.fit();
 
     // Spawn PTY with claude
-    const currentCwd = cwd() || undefined;
+    const currentCwd = paneCwd() || undefined;
     pty = spawn("/bin/zsh", ["-l", "-c", "claude --dangerously-skip-permissions"], {
       cols: term.cols,
       rows: term.rows,
@@ -114,10 +130,17 @@ export default function TerminalPane(props: Props) {
   });
 
   return (
-    <div
-      ref={containerRef}
-      class="terminal-pane"
-      style={{ display: props.visible ? "block" : "none" }}
-    />
+    <div class="terminal-wrapper" style={{ display: props.visible ? "flex" : "none" }}>
+      <div class="pane-toolbar">
+        <button class="pane-cwd" onClick={changeFolder} title={paneCwd()}>
+          {paneCwd() ? paneCwd().replace(/^\/Users\/[^/]+/, "~") : "..."}
+        </button>
+      </div>
+      <div ref={containerRef} class="terminal-pane" />
+    </div>
   );
+}
+
+function shellEscape(s: string): string {
+  return "'" + s.replace(/'/g, "'\\''") + "'";
 }

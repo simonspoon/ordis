@@ -1,4 +1,5 @@
 import { For, Show } from "solid-js";
+import { invoke } from "@tauri-apps/api/core";
 import { paneOrder, activePaneId, setActivePaneId, createPane, closePane } from "../lib/store";
 
 export default function PaneBar() {
@@ -30,7 +31,10 @@ export default function PaneBar() {
           }}
         </For>
       </div>
-      <button class="pane-add" onClick={() => createPane()} title="New pane">
+      <button class="pane-add" onClick={async () => {
+        const cwd = await invoke<string>("get_cwd");
+        createPane(cwd);
+      }} title="New pane">
         +
       </button>
     </div>
