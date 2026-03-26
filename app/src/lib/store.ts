@@ -17,6 +17,7 @@ export const [inputTokens, setInputTokens] = createSignal(0);
 export const [outputTokens, setOutputTokens] = createSignal(0);
 export const [sessionId, setSessionId] = createSignal<string | null>(null);
 export const [skipPermissions, setSkipPermissions] = createSignal(false);
+export const [cwd, setCwd] = createSignal("");
 
 // Streaming accumulator
 let streaming: StreamingState | null = null;
@@ -134,8 +135,23 @@ export function handleClaudeEvent(event: ClaudeEvent) {
     }
 
     case "assistant": {
-      // We handle tool_result content blocks from assistant snapshots
-      // to pair tool results with their tool_use blocks
+      if (event.message.content) {
+        for (const block of event.message.content) {
+          if (block.type === "tool_result") {
+            attachToolResult(
+              block.tool_use_id,
+              typeof block.content === "string"
+                ? block.content
+                : JSON.stringify(block.content, null, 2),
+              block.is_error || false,
+            );
+          }
+        }
+      }
+      break;
+    }
+
+    case "user": {
       if (event.message.content) {
         for (const block of event.message.content) {
           if (block.type === "tool_result") {

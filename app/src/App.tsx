@@ -1,7 +1,8 @@
 import { onMount, onCleanup } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import { startListening, stopListening } from "./lib/events";
-import { resetSession, skipPermissions, setSkipPermissions } from "./lib/store";
+import { resetSession, skipPermissions, setSkipPermissions, cwd, setCwd } from "./lib/store";
 import ChatView from "./components/ChatView";
 import InputArea from "./components/InputArea";
 import StatusBar from "./components/StatusBar";
@@ -12,6 +13,8 @@ export default function App() {
     await startListening();
     const current = await invoke<boolean>("get_skip_permissions");
     setSkipPermissions(current);
+    const currentCwd = await invoke<string>("get_cwd");
+    setCwd(currentCwd);
   });
 
   onCleanup(() => {
@@ -21,6 +24,21 @@ export default function App() {
   const handleNewSession = async () => {
     await invoke("new_session");
     resetSession();
+  };
+
+  const changeFolder = async () => {
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      defaultPath: cwd() || undefined,
+      title: "Choose working directory",
+    });
+    if (selected) {
+      await invoke("set_cwd", { cwd: selected });
+      setCwd(selected);
+      await invoke("new_session");
+      resetSession();
+    }
   };
 
   const toggleSkipPermissions = async () => {
@@ -33,6 +51,9 @@ export default function App() {
     <div class="app">
       <div class="titlebar">
         <span class="titlebar-title">Ordis</span>
+        <button class="titlebar-cwd" onClick={changeFolder} title={cwd()}>
+          {cwd() ? cwd().replace(/^\/Users\/[^/]+/, "~") : "..."}
+        </button>
         <div class="titlebar-actions">
           <button
             class={`btn btn-toggle ${skipPermissions() ? "btn-toggle-active" : ""}`}

@@ -56,6 +56,26 @@ body {
   letter-spacing: 0.5px;
 }
 
+.titlebar-cwd {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 4px;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
+}
+.titlebar-cwd:hover {
+  background: var(--border);
+  color: var(--text-secondary);
+}
+
 .titlebar-actions {
   display: flex;
   gap: 6px;
@@ -277,6 +297,17 @@ body {
   font-weight: 600;
 }
 
+.tool-summary {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  text-align: left;
+}
+
 .tool-error-badge {
   font-size: 11px;
   background: var(--error);
@@ -284,6 +315,24 @@ body {
   padding: 1px 6px;
   border-radius: 3px;
   margin-left: auto;
+  flex-shrink: 0;
+}
+
+.tool-result-toggle {
+  background: none;
+  border: none;
+  border-top: 1px solid var(--border);
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  padding: 6px 12px;
+  width: 100%;
+}
+.tool-result-toggle:hover {
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .tool-content {

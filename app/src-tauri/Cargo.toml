@@ -17,6 +17,7 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-shell = "2"
+tauri-plugin-dialog = "2"
 ordis-protocol = { path = "../../crates/protocol" }
 ordis-process = { path = "../../crates/process" }
 serde.workspace = true

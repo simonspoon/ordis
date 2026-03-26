@@ -87,9 +87,19 @@ async fn new_session(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn get_cwd(state: State<'_, AppState>) -> Result<String, String> {
+    let cwd = state.cwd.lock().await;
+    Ok(cwd.to_string_lossy().to_string())
+}
+
+#[tauri::command]
 async fn set_cwd(cwd: String, state: State<'_, AppState>) -> Result<(), String> {
+    let path = PathBuf::from(&cwd);
+    if !path.is_dir() {
+        return Err(format!("Not a directory: {cwd}"));
+    }
     let mut current = state.cwd.lock().await;
-    *current = PathBuf::from(cwd);
+    *current = path;
     Ok(())
 }
 
@@ -110,6 +120,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(AppState {
             session_id: Arc::new(Mutex::new(None)),
             active_process: Arc::new(Mutex::new(None)),
@@ -123,6 +134,7 @@ pub fn run() {
             stop_generation,
             get_session_id,
             new_session,
+            get_cwd,
             set_cwd,
             set_skip_permissions,
             get_skip_permissions,

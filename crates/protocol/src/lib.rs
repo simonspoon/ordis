@@ -11,6 +11,9 @@ pub enum ClaudeEvent {
     #[serde(rename = "assistant")]
     Assistant(AssistantEvent),
 
+    #[serde(rename = "user")]
+    User(UserEvent),
+
     #[serde(rename = "stream_event")]
     Stream(StreamEvent),
 
@@ -81,6 +84,22 @@ pub enum ContentBlock {
         #[serde(default)]
         is_error: Option<bool>,
     },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserEvent {
+    pub message: UserMessage2,
+    pub session_id: String,
+    #[serde(default)]
+    pub parent_tool_use_id: Option<String>,
+    #[serde(flatten)]
+    pub extra: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserMessage2 {
+    pub role: String,
+    pub content: Vec<ContentBlock>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

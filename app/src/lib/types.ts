@@ -90,9 +90,17 @@ export interface RateLimitEvent {
   session_id: string;
 }
 
+export interface UserEvent {
+  type: "user";
+  message: { role: string; content: ContentBlock[] };
+  session_id: string;
+  parent_tool_use_id?: string | null;
+}
+
 export type ClaudeEvent =
   | SystemEvent
   | AssistantEvent
+  | UserEvent
   | StreamEvent
   | ResultEvent
   | RateLimitEvent;

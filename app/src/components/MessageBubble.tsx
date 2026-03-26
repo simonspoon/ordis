@@ -107,7 +107,9 @@ export default function MessageBubble(props: Props) {
 
   return (
     <div class={`message ${isUser() ? "message-user" : "message-assistant"}`}>
-      <div class="message-role">{isUser() ? "You" : "Claude"}</div>
+      <Show when={isUser()}>
+        <div class="message-role">You</div>
+      </Show>
       <div class="message-body">
         <For each={props.message.blocks}>
           {(block) => <BlockRenderer block={block} />}
