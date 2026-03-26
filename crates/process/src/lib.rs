@@ -24,21 +24,13 @@ pub struct ClaudeProcess {
 impl ClaudeProcess {
     /// Spawn a new `claude -p` process for a single turn.
     /// If `session_id` is provided, resumes that session.
-    pub fn spawn(
-        message: &str,
-        cwd: &Path,
-        session_id: Option<&str>,
-        skip_permissions: bool,
-    ) -> Result<Self> {
+    pub fn spawn(message: &str, cwd: &Path, session_id: Option<&str>) -> Result<Self> {
         let mut cmd = Command::new("claude");
         cmd.arg("-p")
             .arg("--output-format")
             .arg("stream-json")
-            .arg("--include-partial-messages");
-
-        if skip_permissions {
-            cmd.arg("--dangerously-skip-permissions");
-        }
+            .arg("--include-partial-messages")
+            .arg("--dangerously-skip-permissions");
 
         cmd.arg(message)
             .current_dir(cwd)

@@ -13,7 +13,6 @@ struct AppState {
     /// Session IDs keyed by pane_id
     session_ids: Arc<Mutex<HashMap<String, String>>>,
     cwd: Arc<Mutex<PathBuf>>,
-    skip_permissions: Arc<Mutex<bool>>,
 }
 
 /// Wrapper so frontend can route events to the correct pane
@@ -32,10 +31,9 @@ async fn send_message(
 ) -> Result<(), String> {
     let cwd = state.cwd.lock().await.clone();
     let session_id = state.session_ids.lock().await.get(&pane_id).cloned();
-    let skip_permissions = *state.skip_permissions.lock().await;
 
-    let process = ClaudeProcess::spawn(&message, &cwd, session_id.as_deref(), skip_permissions)
-        .map_err(|e| e.to_string())?;
+    let process =
+        ClaudeProcess::spawn(&message, &cwd, session_id.as_deref()).map_err(|e| e.to_string())?;
 
     {
         let mut procs = state.processes.lock().await;
@@ -123,18 +121,6 @@ async fn set_cwd(cwd: String, state: State<'_, AppState>) -> Result<(), String> 
     Ok(())
 }
 
-#[tauri::command]
-async fn set_skip_permissions(enabled: bool, state: State<'_, AppState>) -> Result<(), String> {
-    let mut sp = state.skip_permissions.lock().await;
-    *sp = enabled;
-    Ok(())
-}
-
-#[tauri::command]
-async fn get_skip_permissions(state: State<'_, AppState>) -> Result<bool, String> {
-    Ok(*state.skip_permissions.lock().await)
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -144,7 +130,6 @@ pub fn run() {
         .manage(AppState {
             processes: Arc::new(Mutex::new(HashMap::new())),
             session_ids: Arc::new(Mutex::new(HashMap::new())),
-            skip_permissions: Arc::new(Mutex::new(false)),
             cwd: Arc::new(Mutex::new(
                 std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")),
             )),
@@ -156,8 +141,6 @@ pub fn run() {
             new_session,
             get_cwd,
             set_cwd,
-            set_skip_permissions,
-            get_skip_permissions,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Ordis");

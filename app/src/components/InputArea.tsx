@@ -1,6 +1,6 @@
 import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { addUserMessage, setPanes } from "../lib/store";
+import { addUserMessage, setPanes, clearPendingQuestions } from "../lib/store";
 import type { AppStatus } from "../lib/store";
 
 interface Props {
@@ -15,6 +15,7 @@ export default function InputArea(props: Props) {
     const msg = text().trim();
     if (!msg || props.status === "streaming") return;
 
+    clearPendingQuestions(props.paneId);
     addUserMessage(props.paneId, msg);
     setText("");
     setPanes(props.paneId, "status", "streaming");

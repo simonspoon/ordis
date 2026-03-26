@@ -6,12 +6,12 @@ import type {
   ClaudeEvent,
   StreamingState,
   PaneState,
+  PendingQuestion,
 } from "./types";
 
 export type AppStatus = "idle" | "streaming" | "error";
 
 // Global state (shared across all panes)
-export const [skipPermissions, setSkipPermissions] = createSignal(false);
 export const [cwd, setCwd] = createSignal("");
 
 // Pane state
@@ -43,6 +43,7 @@ export function createPane(): string {
     outputTokens: 0,
     sessionId: null,
     streamingMessage: null,
+    pendingQuestions: [],
   });
   setPaneOrder((prev) => [...prev, id]);
   setActivePaneId(id);
@@ -53,7 +54,6 @@ export function closePane(paneId: string) {
   setPanes(produce((p) => { delete p[paneId]; }));
   streamingStates.delete(paneId);
   setPaneOrder((prev) => prev.filter((id) => id !== paneId));
-  // If we closed the active pane, switch to another
   if (activePaneId() === paneId) {
     const remaining = paneOrder();
     setActivePaneId(remaining.length > 0 ? remaining[0] : "");
@@ -146,10 +146,12 @@ export function handleClaudeEvent(paneId: string, event: ClaudeEvent) {
 
         case "message_stop": {
           if (s.blocks.length > 0) {
+            // Deep-clone blocks so SolidJS store sees fresh objects
+            const blocks: MessageBlock[] = s.blocks.map((b) => ({ ...b }));
             const msg: ChatMessage = {
               id: crypto.randomUUID(),
               role: "assistant",
-              blocks: [...s.blocks],
+              blocks,
               timestamp: Date.now(),
             };
             setPanes(paneId, "messages", (prev) => [...prev, msg]);
@@ -174,6 +176,8 @@ export function handleClaudeEvent(paneId: string, event: ClaudeEvent) {
                 : JSON.stringify(block.content, null, 2),
               block.is_error || false,
             );
+          } else if (block.type === "tool_use" && block.name === "AskUserQuestion") {
+            extractPendingQuestions(paneId, block.id, block.input);
           }
         }
       }
@@ -210,6 +214,32 @@ export function handleClaudeEvent(paneId: string, event: ClaudeEvent) {
       break;
     }
   }
+}
+
+function extractPendingQuestions(paneId: string, toolUseId: string, input: unknown) {
+  try {
+    const data = input as { questions?: Array<{
+      question: string;
+      header?: string;
+      options?: Array<{ label: string; description?: string }>;
+      multiSelect?: boolean;
+    }> };
+    if (!data?.questions?.length) return;
+    const questions: PendingQuestion[] = data.questions.map((q) => ({
+      toolUseId,
+      question: q.question,
+      header: q.header,
+      options: q.options || [],
+      multiSelect: q.multiSelect || false,
+    }));
+    setPanes(paneId, "pendingQuestions", (prev) => [...prev, ...questions]);
+  } catch {
+    // Malformed input — ignore
+  }
+}
+
+export function clearPendingQuestions(paneId: string) {
+  setPanes(paneId, "pendingQuestions", []);
 }
 
 function attachToolResult(paneId: string, toolUseId: string, content: string, isError: boolean) {
@@ -260,6 +290,7 @@ export function resetPane(paneId: string) {
     outputTokens: 0,
     sessionId: null,
     streamingMessage: null,
+    pendingQuestions: [],
   });
   streamingStates.delete(paneId);
 }

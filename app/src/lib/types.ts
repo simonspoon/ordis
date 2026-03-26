@@ -125,6 +125,21 @@ export interface StreamingState {
   toolInputBuffers: Map<number, string>;
 }
 
+// Question option from AskUserQuestion tool
+export interface QuestionOption {
+  label: string;
+  description?: string;
+}
+
+// A single question from AskUserQuestion
+export interface PendingQuestion {
+  toolUseId: string;
+  question: string;
+  header?: string;
+  options: QuestionOption[];
+  multiSelect: boolean;
+}
+
 export interface PaneState {
   id: string;
   messages: ChatMessage[];
@@ -135,6 +150,7 @@ export interface PaneState {
   outputTokens: number;
   sessionId: string | null;
   streamingMessage: ChatMessage | null;
+  pendingQuestions: PendingQuestion[];
 }
 
 export interface PaneEvent {

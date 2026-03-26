@@ -3,7 +3,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { startListening, stopListening } from "./lib/events";
 import {
-  skipPermissions, setSkipPermissions,
   cwd, setCwd,
   createPane, resetPane, activePaneId,
 } from "./lib/store";
@@ -14,11 +13,8 @@ import "./App.css";
 export default function App() {
   onMount(async () => {
     await startListening();
-    const current = await invoke<boolean>("get_skip_permissions");
-    setSkipPermissions(current);
     const currentCwd = await invoke<string>("get_cwd");
     setCwd(currentCwd);
-    // Create the initial pane
     createPane();
   });
 
@@ -51,12 +47,6 @@ export default function App() {
     }
   };
 
-  const toggleSkipPermissions = async () => {
-    const next = !skipPermissions();
-    await invoke("set_skip_permissions", { enabled: next });
-    setSkipPermissions(next);
-  };
-
   return (
     <div class="app">
       <div class="titlebar">
@@ -65,13 +55,6 @@ export default function App() {
           {cwd() ? cwd().replace(/^\/Users\/[^/]+/, "~") : "..."}
         </button>
         <div class="titlebar-actions">
-          <button
-            class={`btn btn-toggle ${skipPermissions() ? "btn-toggle-active" : ""}`}
-            onClick={toggleSkipPermissions}
-            title="Skip permission prompts (--dangerously-skip-permissions)"
-          >
-            Skip Permissions
-          </button>
           <button class="btn btn-new" onClick={handleNewSession}>
             New Session
           </button>
