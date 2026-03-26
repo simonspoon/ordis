@@ -1,0 +1,24 @@
+[package]
+name = "ordis"
+version.workspace = true
+description = "Desktop interface for Claude Code"
+authors = ["Simon"]
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "ordis_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-shell = "2"
+ordis-protocol = { path = "../../crates/protocol" }
+ordis-process = { path = "../../crates/process" }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
