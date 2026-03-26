@@ -1,21 +1,32 @@
 import { For, Show } from "solid-js";
-import { invoke } from "@tauri-apps/api/core";
-import { paneOrder, activePaneId, setActivePaneId, createPane, closePane } from "../lib/store";
+import {
+  panes, activePaneId, setActivePaneId,
+  closePane, splitPane, getLeafPaneIds,
+} from "../lib/store";
 
 export default function PaneBar() {
+  const leafIds = () => getLeafPaneIds();
+
+  const label = (id: string) => {
+    const cwd = panes[id]?.cwd;
+    if (!cwd) return "Terminal";
+    const parts = cwd.split("/");
+    return parts[parts.length - 1] || "Terminal";
+  };
+
   return (
     <div class="pane-bar">
       <div class="pane-tabs">
-        <For each={paneOrder()}>
-          {(id, index) => {
+        <For each={leafIds()}>
+          {(id) => {
             const isActive = () => activePaneId() === id;
             return (
               <button
                 class={`pane-tab ${isActive() ? "pane-tab-active" : ""}`}
                 onClick={() => setActivePaneId(id)}
               >
-                <span class="pane-tab-label">Terminal {index() + 1}</span>
-                <Show when={paneOrder().length > 1}>
+                <span class="pane-tab-label">{label(id)}</span>
+                <Show when={leafIds().length > 1}>
                   <span
                     class="pane-tab-close"
                     onClick={(e) => {
@@ -31,12 +42,22 @@ export default function PaneBar() {
           }}
         </For>
       </div>
-      <button class="pane-add" onClick={async () => {
-        const cwd = await invoke<string>("get_cwd");
-        createPane(cwd);
-      }} title="New pane">
-        +
-      </button>
+      <div class="pane-actions">
+        <button
+          class="pane-action"
+          onClick={() => splitPane("vertical")}
+          title="Split vertical (Cmd+D)"
+        >
+          |
+        </button>
+        <button
+          class="pane-action"
+          onClick={() => splitPane("horizontal")}
+          title="Split horizontal (Cmd+Shift+D)"
+        >
+          --
+        </button>
+      </div>
     </div>
   );
 }

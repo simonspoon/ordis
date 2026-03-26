@@ -1,15 +1,14 @@
-import { onMount, onCleanup, createSignal } from "solid-js";
+import { onMount, onCleanup } from "solid-js";
 import { Terminal } from "@xterm/xterm";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { FitAddon } from "@xterm/addon-fit";
 import { spawn } from "tauri-pty";
 import { open } from "@tauri-apps/plugin-dialog";
-import { panes, setPaneCwd, closePane } from "../lib/store";
+import { panes, setPaneCwd, closePane, activePaneId, setActivePaneId } from "../lib/store";
 import "@xterm/xterm/css/xterm.css";
 
 interface Props {
   paneId: string;
-  visible: boolean;
 }
 
 export default function TerminalPane(props: Props) {
@@ -72,7 +71,6 @@ export default function TerminalPane(props: Props) {
     term.loadAddon(fitAddon);
     term.open(containerRef);
 
-    // Try WebGL renderer, fall back to DOM
     try {
       const webgl = new WebglAddon();
       webgl.onContextLoss(() => webgl.dispose());
@@ -83,7 +81,6 @@ export default function TerminalPane(props: Props) {
 
     fitAddon.fit();
 
-    // Spawn PTY with claude
     const currentCwd = paneCwd() || undefined;
     pty = spawn("/bin/zsh", ["-l", "-c", "claude --dangerously-skip-permissions"], {
       cols: term.cols,
@@ -92,31 +89,24 @@ export default function TerminalPane(props: Props) {
       name: "xterm-256color",
     });
 
-    // PTY -> terminal
     pty.onData((data: Uint8Array) => {
       term!.write(new Uint8Array(data));
     });
 
-    // Terminal -> PTY (user keystrokes)
     term.onData((data: string) => {
       pty!.write(data);
     });
 
-    // Keep PTY size in sync with terminal
     term.onResize(({ cols, rows }) => {
       pty!.resize(cols, rows);
     });
 
-    // Close pane when claude exits
     pty.onExit(() => {
       closePane(props.paneId);
     });
 
-    // Resize on container size changes
     resizeObserver = new ResizeObserver(() => {
-      if (props.visible && fitAddon) {
-        fitAddon.fit();
-      }
+      if (fitAddon) fitAddon.fit();
     });
     resizeObserver.observe(containerRef);
   });
@@ -130,7 +120,10 @@ export default function TerminalPane(props: Props) {
   });
 
   return (
-    <div class="terminal-wrapper" style={{ display: props.visible ? "flex" : "none" }}>
+    <div
+      class={`terminal-wrapper ${activePaneId() === props.paneId ? "terminal-focused" : ""}`}
+      onMouseDown={() => setActivePaneId(props.paneId)}
+    >
       <div class="pane-toolbar">
         <button class="pane-cwd" onClick={changeFolder} title={paneCwd()}>
           {paneCwd() ? paneCwd().replace(/^\/Users\/[^/]+/, "~") : "..."}
