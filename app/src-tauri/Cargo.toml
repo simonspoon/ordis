@@ -18,8 +18,6 @@ tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
-ordis-protocol = { path = "../../crates/protocol" }
-ordis-process = { path = "../../crates/process" }
+tauri-plugin-pty = "0.2"
 serde.workspace = true
 serde_json.workspace = true
-tokio.workspace = true
