@@ -1,30 +1,36 @@
 import { createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { status, setStatus, addUserMessage } from "../lib/store";
+import { addUserMessage, setPanes } from "../lib/store";
+import type { AppStatus } from "../lib/store";
 
-export default function InputArea() {
+interface Props {
+  paneId: string;
+  status: AppStatus;
+}
+
+export default function InputArea(props: Props) {
   const [text, setText] = createSignal("");
 
   const send = async () => {
     const msg = text().trim();
-    if (!msg || status() === "streaming") return;
+    if (!msg || props.status === "streaming") return;
 
-    addUserMessage(msg);
+    addUserMessage(props.paneId, msg);
     setText("");
-    setStatus("streaming");
+    setPanes(props.paneId, "status", "streaming");
 
     try {
-      await invoke("send_message", { message: msg });
+      await invoke("send_message", { paneId: props.paneId, message: msg });
     } catch (e) {
       console.error("Failed to send message:", e);
-      setStatus("error");
+      setPanes(props.paneId, "status", "error");
     }
   };
 
   const stop = async () => {
     try {
-      await invoke("stop_generation");
-      setStatus("idle");
+      await invoke("stop_generation", { paneId: props.paneId });
+      setPanes(props.paneId, "status", "idle");
     } catch (e) {
       console.error("Failed to stop:", e);
     }
@@ -45,10 +51,10 @@ export default function InputArea() {
         onInput={(e) => setText(e.currentTarget.value)}
         onKeyDown={handleKeyDown}
         placeholder="Send a message..."
-        disabled={status() === "streaming"}
+        disabled={props.status === "streaming"}
         rows={1}
       />
-      {status() === "streaming" ? (
+      {props.status === "streaming" ? (
         <button class="btn btn-stop" onClick={stop}>
           Stop
         </button>

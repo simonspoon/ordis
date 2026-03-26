@@ -124,3 +124,20 @@ export interface StreamingState {
   activeBlockIndex: number;
   toolInputBuffers: Map<number, string>;
 }
+
+export interface PaneState {
+  id: string;
+  messages: ChatMessage[];
+  status: "idle" | "streaming" | "error";
+  model: string;
+  totalCost: number;
+  inputTokens: number;
+  outputTokens: number;
+  sessionId: string | null;
+  streamingMessage: ChatMessage | null;
+}
+
+export interface PaneEvent {
+  pane_id: string;
+  event: ClaudeEvent;
+}

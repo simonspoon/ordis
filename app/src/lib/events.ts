@@ -1,13 +1,14 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { ClaudeEvent } from "./types";
+import type { PaneEvent } from "./types";
 import { handleClaudeEvent } from "./store";
 
 let unlisten: UnlistenFn | null = null;
 
 export async function startListening() {
   if (unlisten) return;
-  unlisten = await listen<ClaudeEvent>("claude-event", (event) => {
-    handleClaudeEvent(event.payload);
+  unlisten = await listen<PaneEvent>("claude-event", (event) => {
+    const { pane_id, event: claudeEvent } = event.payload;
+    handleClaudeEvent(pane_id, claudeEvent);
   });
 }
 

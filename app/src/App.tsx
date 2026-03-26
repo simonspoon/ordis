@@ -1,11 +1,14 @@
-import { onMount, onCleanup } from "solid-js";
+import { onMount, onCleanup, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { startListening, stopListening } from "./lib/events";
-import { resetSession, skipPermissions, setSkipPermissions, cwd, setCwd } from "./lib/store";
-import ChatView from "./components/ChatView";
-import InputArea from "./components/InputArea";
-import StatusBar from "./components/StatusBar";
+import {
+  skipPermissions, setSkipPermissions,
+  cwd, setCwd,
+  createPane, resetPane, activePaneId,
+} from "./lib/store";
+import PaneBar from "./components/PaneBar";
+import SessionPane from "./components/SessionPane";
 import "./App.css";
 
 export default function App() {
@@ -15,6 +18,8 @@ export default function App() {
     setSkipPermissions(current);
     const currentCwd = await invoke<string>("get_cwd");
     setCwd(currentCwd);
+    // Create the initial pane
+    createPane();
   });
 
   onCleanup(() => {
@@ -22,8 +27,10 @@ export default function App() {
   });
 
   const handleNewSession = async () => {
-    await invoke("new_session");
-    resetSession();
+    const paneId = activePaneId();
+    if (!paneId) return;
+    await invoke("new_session", { paneId });
+    resetPane(paneId);
   };
 
   const changeFolder = async () => {
@@ -36,8 +43,11 @@ export default function App() {
     if (selected) {
       await invoke("set_cwd", { cwd: selected });
       setCwd(selected);
-      await invoke("new_session");
-      resetSession();
+      const paneId = activePaneId();
+      if (paneId) {
+        await invoke("new_session", { paneId });
+        resetPane(paneId);
+      }
     }
   };
 
@@ -67,9 +77,10 @@ export default function App() {
           </button>
         </div>
       </div>
-      <ChatView />
-      <InputArea />
-      <StatusBar />
+      <PaneBar />
+      <Show when={activePaneId()} fallback={<div class="empty-state">No panes open</div>}>
+        <SessionPane paneId={activePaneId()} />
+      </Show>
     </div>
   );
 }

@@ -1,60 +1,89 @@
 import { createSignal } from "solid-js";
+import { createStore, produce } from "solid-js/store";
 import type {
   ChatMessage,
   MessageBlock,
   ClaudeEvent,
   StreamingState,
+  PaneState,
 } from "./types";
 
 export type AppStatus = "idle" | "streaming" | "error";
 
-// Signals
-export const [messages, setMessages] = createSignal<ChatMessage[]>([]);
-export const [status, setStatus] = createSignal<AppStatus>("idle");
-export const [model, setModel] = createSignal<string>("");
-export const [totalCost, setTotalCost] = createSignal(0);
-export const [inputTokens, setInputTokens] = createSignal(0);
-export const [outputTokens, setOutputTokens] = createSignal(0);
-export const [sessionId, setSessionId] = createSignal<string | null>(null);
+// Global state (shared across all panes)
 export const [skipPermissions, setSkipPermissions] = createSignal(false);
 export const [cwd, setCwd] = createSignal("");
 
-// Streaming accumulator
-let streaming: StreamingState | null = null;
+// Pane state
+export const [panes, setPanes] = createStore<Record<string, PaneState>>({});
+export const [activePaneId, setActivePaneId] = createSignal<string>("");
+export const [paneOrder, setPaneOrder] = createSignal<string[]>([]);
 
-function ensureStreaming(): StreamingState {
-  if (!streaming) {
-    streaming = {
-      blocks: [],
-      activeBlockIndex: -1,
-      toolInputBuffers: new Map(),
-    };
+// Per-pane streaming accumulators (not in store — mutable working state)
+const streamingStates = new Map<string, StreamingState>();
+
+function ensureStreaming(paneId: string): StreamingState {
+  let s = streamingStates.get(paneId);
+  if (!s) {
+    s = { blocks: [], activeBlockIndex: -1, toolInputBuffers: new Map() };
+    streamingStates.set(paneId, s);
   }
-  return streaming;
+  return s;
 }
 
-export function addUserMessage(text: string) {
+export function createPane(): string {
+  const id = crypto.randomUUID();
+  setPanes(id, {
+    id,
+    messages: [],
+    status: "idle",
+    model: "",
+    totalCost: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    sessionId: null,
+    streamingMessage: null,
+  });
+  setPaneOrder((prev) => [...prev, id]);
+  setActivePaneId(id);
+  return id;
+}
+
+export function closePane(paneId: string) {
+  setPanes(produce((p) => { delete p[paneId]; }));
+  streamingStates.delete(paneId);
+  setPaneOrder((prev) => prev.filter((id) => id !== paneId));
+  // If we closed the active pane, switch to another
+  if (activePaneId() === paneId) {
+    const remaining = paneOrder();
+    setActivePaneId(remaining.length > 0 ? remaining[0] : "");
+  }
+}
+
+export function addUserMessage(paneId: string, text: string) {
   const msg: ChatMessage = {
     id: crypto.randomUUID(),
     role: "user",
     blocks: [{ type: "text", text }],
     timestamp: Date.now(),
   };
-  setMessages((prev) => [...prev, msg]);
+  setPanes(paneId, "messages", (prev) => [...prev, msg]);
 }
 
-export function handleClaudeEvent(event: ClaudeEvent) {
+export function handleClaudeEvent(paneId: string, event: ClaudeEvent) {
+  if (!panes[paneId]) return;
+
   switch (event.type) {
     case "system": {
       if (event.subtype === "init" && event.model) {
-        setModel(event.model);
+        setPanes(paneId, "model", event.model);
       }
       break;
     }
 
     case "stream_event": {
       const inner = event.event;
-      const s = ensureStreaming();
+      const s = ensureStreaming(paneId);
 
       switch (inner.type) {
         case "content_block_start": {
@@ -76,7 +105,7 @@ export function handleClaudeEvent(event: ClaudeEvent) {
           }
           s.blocks[inner.index] = block;
           s.activeBlockIndex = inner.index;
-          emitStreamingMessage();
+          emitStreamingMessage(paneId);
           break;
         }
 
@@ -94,7 +123,7 @@ export function handleClaudeEvent(event: ClaudeEvent) {
             s.toolInputBuffers.set(inner.index, buf);
             block.input = buf;
           }
-          emitStreamingMessage();
+          emitStreamingMessage(paneId);
           break;
         }
 
@@ -104,7 +133,6 @@ export function handleClaudeEvent(event: ClaudeEvent) {
             block.collapsed = true;
           }
           if (block?.type === "tool_use") {
-            // Try to pretty-print the input JSON
             try {
               const parsed = JSON.parse(block.input);
               block.input = JSON.stringify(parsed, null, 2);
@@ -112,12 +140,11 @@ export function handleClaudeEvent(event: ClaudeEvent) {
               // leave as-is
             }
           }
-          emitStreamingMessage();
+          emitStreamingMessage(paneId);
           break;
         }
 
         case "message_stop": {
-          // Finalize the streaming message
           if (s.blocks.length > 0) {
             const msg: ChatMessage = {
               id: crypto.randomUUID(),
@@ -125,9 +152,10 @@ export function handleClaudeEvent(event: ClaudeEvent) {
               blocks: [...s.blocks],
               timestamp: Date.now(),
             };
-            setMessages((prev) => [...prev, msg]);
+            setPanes(paneId, "messages", (prev) => [...prev, msg]);
           }
-          streaming = null;
+          streamingStates.delete(paneId);
+          setPanes(paneId, "streamingMessage", null);
           break;
         }
       }
@@ -139,6 +167,7 @@ export function handleClaudeEvent(event: ClaudeEvent) {
         for (const block of event.message.content) {
           if (block.type === "tool_result") {
             attachToolResult(
+              paneId,
               block.tool_use_id,
               typeof block.content === "string"
                 ? block.content
@@ -156,6 +185,7 @@ export function handleClaudeEvent(event: ClaudeEvent) {
         for (const block of event.message.content) {
           if (block.type === "tool_result") {
             attachToolResult(
+              paneId,
               block.tool_use_id,
               typeof block.content === "string"
                 ? block.content
@@ -169,68 +199,67 @@ export function handleClaudeEvent(event: ClaudeEvent) {
     }
 
     case "result": {
-      setTotalCost((prev) => prev + event.total_cost_usd);
+      setPanes(paneId, "totalCost", (prev) => prev + event.total_cost_usd);
       if (event.usage) {
-        setInputTokens((prev) => prev + event.usage!.input_tokens);
-        setOutputTokens((prev) => prev + event.usage!.output_tokens);
+        setPanes(paneId, "inputTokens", (prev) => prev + event.usage!.input_tokens);
+        setPanes(paneId, "outputTokens", (prev) => prev + event.usage!.output_tokens);
       }
-      setSessionId(event.session_id);
-      setStatus("idle");
-      // Clean up any lingering streaming state
-      streaming = null;
+      setPanes(paneId, "sessionId", event.session_id);
+      setPanes(paneId, "status", "idle");
+      streamingStates.delete(paneId);
       break;
     }
   }
 }
 
-function attachToolResult(toolUseId: string, content: string, isError: boolean) {
-  // Check streaming blocks first
-  if (streaming) {
-    for (const block of streaming.blocks) {
+function attachToolResult(paneId: string, toolUseId: string, content: string, isError: boolean) {
+  const s = streamingStates.get(paneId);
+  if (s) {
+    for (const block of s.blocks) {
       if (block.type === "tool_use" && block.id === toolUseId) {
         block.result = content;
         block.isError = isError;
-        emitStreamingMessage();
+        emitStreamingMessage(paneId);
         return;
       }
     }
   }
-  // Check finalized messages
-  setMessages((prev) =>
-    prev.map((msg) => ({
+  setPanes(paneId, "messages", (msgs) =>
+    msgs.map((msg) => ({
       ...msg,
       blocks: msg.blocks.map((block) =>
         block.type === "tool_use" && block.id === toolUseId
-          ? { ...block, result: content, isError: isError }
+          ? { ...block, result: content, isError }
           : block,
       ),
     })),
   );
 }
 
-// Emit a snapshot of the current streaming state as a temporary message
-// We use a special signal for this
-export const [streamingMessage, setStreamingMessage] = createSignal<ChatMessage | null>(null);
-
-function emitStreamingMessage() {
-  if (!streaming || streaming.blocks.length === 0) {
-    setStreamingMessage(null);
+function emitStreamingMessage(paneId: string) {
+  const s = streamingStates.get(paneId);
+  if (!s || s.blocks.length === 0) {
+    setPanes(paneId, "streamingMessage", null);
     return;
   }
-  setStreamingMessage({
+  setPanes(paneId, "streamingMessage", {
     id: "streaming",
     role: "assistant",
-    blocks: [...streaming.blocks],
+    blocks: [...s.blocks],
     timestamp: Date.now(),
   });
 }
 
-export function resetSession() {
-  setMessages([]);
-  setTotalCost(0);
-  setInputTokens(0);
-  setOutputTokens(0);
-  setSessionId(null);
-  setStreamingMessage(null);
-  streaming = null;
+export function resetPane(paneId: string) {
+  setPanes(paneId, {
+    messages: [],
+    status: "idle" as AppStatus,
+    model: panes[paneId]?.model || "",
+    totalCost: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    sessionId: null,
+    streamingMessage: null,
+  });
+  streamingStates.delete(paneId);
 }

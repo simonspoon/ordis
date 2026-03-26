@@ -1,8 +1,13 @@
-import { For, Show, onMount, createEffect } from "solid-js";
-import { messages, streamingMessage } from "../lib/store";
+import { For, Show, createEffect } from "solid-js";
+import type { ChatMessage } from "../lib/types";
 import MessageBubble from "./MessageBubble";
 
-export default function ChatView() {
+interface Props {
+  messages: ChatMessage[];
+  streamingMessage: ChatMessage | null;
+}
+
+export default function ChatView(props: Props) {
   let scrollRef: HTMLDivElement | undefined;
 
   const scrollToBottom = () => {
@@ -11,22 +16,19 @@ export default function ChatView() {
     }
   };
 
-  // Auto-scroll when messages change
   createEffect(() => {
-    messages();
-    streamingMessage();
+    props.messages;
+    props.streamingMessage;
     scrollToBottom();
   });
 
-  onMount(scrollToBottom);
-
   return (
     <div class="chat-view" ref={scrollRef}>
-      <For each={messages()}>
+      <For each={props.messages}>
         {(msg) => <MessageBubble message={msg} />}
       </For>
-      <Show when={streamingMessage()}>
-        <MessageBubble message={streamingMessage()!} />
+      <Show when={props.streamingMessage}>
+        <MessageBubble message={props.streamingMessage!} />
       </Show>
     </div>
   );
