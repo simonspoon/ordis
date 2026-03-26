@@ -20,5 +20,6 @@ tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-pty = "0.2"
 dirs = "6"
+toml = "0.8"
 serde.workspace = true
 serde_json.workspace = true
