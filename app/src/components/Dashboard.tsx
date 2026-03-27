@@ -216,7 +216,8 @@ function TaskItem(props: { task: Task; projectName: string; projectPath: string;
 
   const handleLaunch = (e: MouseEvent) => {
     e.stopPropagation();
-    createPane(props.projectPath);
+    const prompt = `Limbo task ${props.task.id} — "${props.task.name}"${props.task.action ? `\nAction: ${props.task.action}` : ""}\n\nPick up this task from limbo and execute it. The task ID is ${props.task.id}.`;
+    createPane(props.projectPath, { agent: "swe-team:project-manager", prompt });
     setViewMode("workspace");
   };
 

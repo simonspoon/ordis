@@ -82,7 +82,15 @@ export default function TerminalPane(props: Props) {
     fitAddon.fit();
 
     const currentCwd = paneCwd() || undefined;
-    pty = spawn("/bin/zsh", ["-l", "-c", "claude --dangerously-skip-permissions"], {
+    const pane = panes[props.paneId];
+    let command = "claude --dangerously-skip-permissions";
+    if (pane?.agent) {
+      command += ` --agent ${shellEscape(pane.agent)}`;
+    }
+    if (pane?.prompt) {
+      command += ` ${shellEscape(pane.prompt)}`;
+    }
+    pty = spawn("/bin/zsh", ["-l", "-c", command], {
       cols: term.cols,
       rows: term.rows,
       cwd: currentCwd,

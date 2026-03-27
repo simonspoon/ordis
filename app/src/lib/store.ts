@@ -6,6 +6,8 @@ import { createStore, produce } from "solid-js/store";
 export interface PaneState {
   id: string;
   cwd: string;
+  agent?: string;
+  prompt?: string;
 }
 
 export type LayoutNode =
@@ -99,9 +101,9 @@ export function computeDividers(
 
 // --- Operations ---
 
-export function createPane(cwd: string): string {
+export function createPane(cwd: string, opts?: { agent?: string; prompt?: string }): string {
   const id = crypto.randomUUID();
-  setPanes(id, { id, cwd });
+  setPanes(id, { id, cwd, agent: opts?.agent, prompt: opts?.prompt });
   if (!layout()) setLayout({ type: "leaf", paneId: id });
   setActivePaneId(id);
   return id;
