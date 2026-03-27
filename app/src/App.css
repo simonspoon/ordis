@@ -324,6 +324,7 @@ body {
   align-items: center;
   gap: 12px;
   margin-bottom: 20px;
+  flex-wrap: wrap;
 }
 
 .dashboard-title {
@@ -340,6 +341,7 @@ body {
   cursor: pointer;
   padding: 4px 8px;
   border-radius: 4px;
+  flex-shrink: 0;
 }
 .dashboard-refresh:hover {
   color: var(--text-primary);
@@ -349,6 +351,85 @@ body {
 .dashboard-loading {
   color: var(--text-muted);
   font-size: 13px;
+}
+
+/* Filters */
+.dashboard-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.filter-status-group {
+  display: flex;
+  gap: 2px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 5px;
+  padding: 2px;
+}
+
+.filter-status-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.filter-status-btn:hover {
+  color: var(--text-secondary);
+}
+.filter-status-btn-active {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+.filter-status-btn-active.filter-status-btn-todo {
+  background: rgba(86, 182, 194, 0.15);
+  color: #56b6c2;
+}
+.filter-status-btn-active.filter-status-btn-in-progress {
+  background: rgba(224, 168, 78, 0.15);
+  color: #e0a84e;
+}
+.filter-status-btn-active.filter-status-btn-done {
+  background: rgba(78, 201, 176, 0.15);
+  color: #4ec9b0;
+}
+
+.filter-search {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  width: 180px;
+  outline: none;
+  font-family: var(--font-sans);
+}
+.filter-search::placeholder {
+  color: var(--text-muted);
+}
+.filter-search:focus {
+  border-color: var(--accent);
+}
+
+.filter-clear {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 3px;
+  line-height: 1;
+}
+.filter-clear:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 /* Project grid */
@@ -474,6 +555,24 @@ body {
 
 .status-dot-done {
   background: #4ec9b0;
+}
+
+.task-status-label {
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+  width: 68px;
+}
+.task-status-todo {
+  color: #56b6c2;
+}
+.task-status-in-progress {
+  color: #e0a84e;
+}
+.task-status-done {
+  color: #4ec9b0;
 }
 
 .task-id {

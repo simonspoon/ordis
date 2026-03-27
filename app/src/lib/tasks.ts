@@ -35,6 +35,7 @@ export interface ProjectState {
 }
 
 export type ViewMode = "dashboard" | "workspace";
+export type StatusFilter = "all" | "todo" | "in-progress" | "done";
 
 // --- State ---
 
@@ -42,6 +43,8 @@ export const [viewMode, setViewMode] = createSignal<ViewMode>("dashboard");
 export const [projects, setProjects] = createStore<Record<string, ProjectState>>({});
 export const [projectsLoading, setProjectsLoading] = createSignal(false);
 export const [selectedTaskId, setSelectedTaskId] = createSignal<{ project: string; taskId: string } | null>(null);
+export const [statusFilter, setStatusFilter] = createSignal<StatusFilter>("all");
+export const [searchFilter, setSearchFilter] = createSignal("");
 
 // --- Derived ---
 
@@ -74,6 +77,68 @@ export function getTaskCounts(projectName: string): { todo: number; inProgress: 
   };
 }
 
+function matchesSearch(task: Task, query: string): boolean {
+  if (!query) return true;
+  const q = query.toLowerCase();
+  return (
+    task.name.toLowerCase().includes(q) ||
+    (task.id && task.id.toLowerCase().includes(q)) ||
+    (task.action && task.action.toLowerCase().includes(q)) ||
+    (task.owner && task.owner.toLowerCase().includes(q))
+  );
+}
+
+function matchesFilters(task: Task): boolean {
+  const status = statusFilter();
+  const query = searchFilter();
+  if (status !== "all" && task.status !== status) return false;
+  return matchesSearch(task, query);
+}
+
+export function getFilteredRootTasks(projectName: string): Task[] {
+  const tasks = getTaskTree(projectName);
+  const status = statusFilter();
+  const query = searchFilter();
+  if (status === "all" && !query) return tasks.filter((t) => !t.parent);
+  // Include a root task if it or any of its descendants match
+  const matchingIds = new Set<string>();
+  for (const t of tasks) {
+    if (matchesFilters(t)) {
+      matchingIds.add(t.id);
+      // Walk up to include ancestors
+      let cur = t;
+      while (cur.parent) {
+        matchingIds.add(cur.parent);
+        const parent = tasks.find((p) => p.id === cur.parent);
+        if (!parent) break;
+        cur = parent;
+      }
+    }
+  }
+  return tasks.filter((t) => !t.parent && matchingIds.has(t.id));
+}
+
+export function getFilteredChildTasks(projectName: string, parentId: string): Task[] {
+  const tasks = getTaskTree(projectName);
+  const status = statusFilter();
+  const query = searchFilter();
+  if (status === "all" && !query) return tasks.filter((t) => t.parent === parentId);
+  const matchingIds = new Set<string>();
+  for (const t of tasks) {
+    if (matchesFilters(t)) {
+      matchingIds.add(t.id);
+      let cur = t;
+      while (cur.parent) {
+        matchingIds.add(cur.parent);
+        const parent = tasks.find((p) => p.id === cur.parent);
+        if (!parent) break;
+        cur = parent;
+      }
+    }
+  }
+  return tasks.filter((t) => t.parent === parentId && matchingIds.has(t.id));
+}
+
 // --- Actions ---
 
 export async function loadProjects() {
@@ -94,6 +159,10 @@ export async function loadProjects() {
         setProjects(produce((s) => { delete s[name]; }));
       }
     }
+    // Eagerly load tasks for all limbo-enabled projects so counts are visible
+    await Promise.all(
+      list.filter((p) => p.has_limbo).map((p) => loadTasksForProject(p.name))
+    );
   } finally {
     setProjectsLoading(false);
   }
