@@ -1,6 +1,7 @@
 import { createSignal } from "solid-js";
 import { createStore, produce } from "solid-js/store";
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 // --- Types ---
 
@@ -82,9 +83,9 @@ function matchesSearch(task: Task, query: string): boolean {
   const q = query.toLowerCase();
   return (
     task.name.toLowerCase().includes(q) ||
-    (task.id && task.id.toLowerCase().includes(q)) ||
-    (task.action && task.action.toLowerCase().includes(q)) ||
-    (task.owner && task.owner.toLowerCase().includes(q))
+    !!task.id?.toLowerCase().includes(q) ||
+    !!task.action?.toLowerCase().includes(q) ||
+    !!task.owner?.toLowerCase().includes(q)
   );
 }
 
@@ -198,4 +199,122 @@ export async function refreshAll() {
   await loadProjects();
   const expanded = Object.values(projects).filter((p) => p.expanded && p.project.has_limbo);
   await Promise.all(expanded.map((p) => loadTasksForProject(p.project.name)));
+}
+
+// --- Mutations ---
+
+const STATUS_CYCLE: Record<string, string> = {
+  "todo": "in-progress",
+  "in-progress": "done",
+  "done": "todo",
+};
+
+export function nextStatus(current: string): string {
+  return STATUS_CYCLE[current] || "todo";
+}
+
+export async function updateTaskStatus(
+  projectName: string,
+  projectPath: string,
+  taskId: string,
+  status: string,
+  outcome?: string,
+) {
+  const tasks = await invoke<Task[]>("update_task_status", {
+    projectPath,
+    taskId,
+    status,
+    outcome: outcome || null,
+  });
+  setProjects(projectName, "tasks", tasks);
+}
+
+export async function addTask(
+  projectName: string,
+  projectPath: string,
+  name: string,
+  opts?: {
+    description?: string;
+    action?: string;
+    verify?: string;
+    result?: string;
+    parent?: string;
+  },
+) {
+  const tasks = await invoke<Task[]>("add_task", {
+    projectPath,
+    name,
+    description: opts?.description || null,
+    action: opts?.action || null,
+    verify: opts?.verify || null,
+    result: opts?.result || null,
+    parent: opts?.parent || null,
+  });
+  setProjects(projectName, "tasks", tasks);
+}
+
+export async function editTask(
+  projectName: string,
+  projectPath: string,
+  taskId: string,
+  fields: {
+    name?: string;
+    description?: string;
+    action?: string;
+    verify?: string;
+    result?: string;
+  },
+) {
+  const tasks = await invoke<Task[]>("edit_task", {
+    projectPath,
+    taskId,
+    name: fields.name || null,
+    description: fields.description || null,
+    action: fields.action || null,
+    verify: fields.verify || null,
+    result: fields.result || null,
+  });
+  setProjects(projectName, "tasks", tasks);
+}
+
+export async function addTaskNote(
+  projectName: string,
+  projectPath: string,
+  taskId: string,
+  message: string,
+) {
+  const tasks = await invoke<Task[]>("add_task_note", {
+    projectPath,
+    taskId,
+    message,
+  });
+  setProjects(projectName, "tasks", tasks);
+}
+
+export async function deleteTask(
+  projectName: string,
+  projectPath: string,
+  taskId: string,
+) {
+  const tasks = await invoke<Task[]>("delete_task", {
+    projectPath,
+    taskId,
+  });
+  setProjects(projectName, "tasks", tasks);
+  // Clear selection if deleted task was selected
+  const sel = selectedTaskId();
+  if (sel?.project === projectName && sel?.taskId === taskId) {
+    setSelectedTaskId(null);
+  }
+}
+
+// --- Live Updates ---
+
+export async function setupTaskListener(): Promise<UnlistenFn> {
+  return listen<{ project: string; tasks: Task[] }>("tasks-changed", (event) => {
+    const { project, tasks } = event.payload;
+    if (projects[project]) {
+      setProjects(project, "tasks", tasks);
+    }
+  });
 }

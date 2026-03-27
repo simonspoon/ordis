@@ -778,3 +778,162 @@ body {
 .sidebar-task-launch:hover {
   color: var(--accent);
 }
+
+/* Clickable status dots */
+.status-dot-clickable {
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.status-dot-clickable:hover {
+  transform: scale(1.4);
+  box-shadow: 0 0 6px rgba(124, 92, 191, 0.4);
+}
+
+.task-status-clickable {
+  cursor: pointer;
+}
+.task-status-clickable:hover {
+  text-decoration: underline;
+}
+
+/* Add task button on project card */
+.project-add-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 6px;
+  border-radius: 3px;
+  line-height: 1;
+  margin-left: 4px;
+  flex-shrink: 0;
+}
+.project-add-btn:hover {
+  color: var(--accent);
+  background: rgba(124, 92, 191, 0.15);
+}
+
+/* Add task form */
+.add-task-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.add-task-input {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-size: 13px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  outline: none;
+  font-family: var(--font-sans);
+}
+.add-task-input:focus {
+  border-color: var(--accent);
+}
+
+.add-task-submit {
+  background: var(--accent);
+  border: none;
+  color: #fff;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.add-task-submit:hover {
+  opacity: 0.9;
+}
+
+.add-task-cancel {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+.add-task-cancel:hover {
+  color: var(--text-primary);
+}
+
+/* Delete button on task row */
+.task-delete-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 4px;
+  border-radius: 3px;
+  opacity: 0;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.task-item:hover .task-delete-btn {
+  opacity: 1;
+}
+.task-delete-btn:hover {
+  color: var(--error);
+  background: rgba(229, 85, 85, 0.15);
+}
+
+/* Editable detail fields */
+.task-detail-value {
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.task-detail-value:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.task-detail-empty {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 11px;
+}
+
+.task-edit-input {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--accent);
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  outline: none;
+  width: 100%;
+  font-family: var(--font-sans);
+}
+
+/* Note input */
+.task-note-form {
+  margin-top: 4px;
+}
+
+.task-note-input {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 3px;
+  outline: none;
+  width: 100%;
+  font-family: var(--font-sans);
+}
+.task-note-input::placeholder {
+  color: var(--text-muted);
+}
+.task-note-input:focus {
+  border-color: var(--accent);
+  background: rgba(255, 255, 255, 0.05);
+}

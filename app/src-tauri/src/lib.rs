@@ -1,10 +1,12 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Mutex;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{Emitter, State};
 
 // --- Config ---
 
@@ -97,6 +99,12 @@ struct Note {
     timestamp: String,
 }
 
+#[derive(Serialize, Clone)]
+struct TasksChanged {
+    project: String,
+    tasks: Vec<Task>,
+}
+
 // --- State ---
 
 struct AppState {
@@ -141,11 +149,10 @@ fn list_projects() -> Result<Vec<Project>, String> {
     Ok(projects)
 }
 
-#[tauri::command]
-fn list_tasks(project_path: String) -> Result<Vec<Task>, String> {
+fn fetch_tasks_for_project(project_path: &str) -> Result<Vec<Task>, String> {
     let output = Command::new("limbo")
         .args(["list", "--show-all"])
-        .current_dir(&project_path)
+        .current_dir(project_path)
         .output()
         .map_err(|e| format!("Failed to run limbo: {e}"))?;
 
@@ -163,6 +170,26 @@ fn list_tasks(project_path: String) -> Result<Vec<Task>, String> {
     serde_json::from_str(trimmed).map_err(|e| format!("Failed to parse limbo output: {e}"))
 }
 
+fn run_limbo_mutation(project_path: &str, args: &[String]) -> Result<Vec<Task>, String> {
+    let output = Command::new("limbo")
+        .args(args)
+        .current_dir(project_path)
+        .output()
+        .map_err(|e| format!("Failed to run limbo: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("limbo command failed: {stderr}"));
+    }
+
+    fetch_tasks_for_project(project_path)
+}
+
+#[tauri::command]
+fn list_tasks(project_path: String) -> Result<Vec<Task>, String> {
+    fetch_tasks_for_project(&project_path)
+}
+
 #[tauri::command]
 fn get_task(project_path: String, task_id: String) -> Result<Task, String> {
     let output = Command::new("limbo")
@@ -178,6 +205,140 @@ fn get_task(project_path: String, task_id: String) -> Result<Task, String> {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     serde_json::from_str(stdout.trim()).map_err(|e| format!("Failed to parse task: {e}"))
+}
+
+#[tauri::command]
+fn update_task_status(
+    project_path: String,
+    task_id: String,
+    status: String,
+    outcome: Option<String>,
+) -> Result<Vec<Task>, String> {
+    let mut args = vec!["status".into(), task_id, status];
+    if let Some(o) = outcome {
+        args.extend(["--outcome".into(), o]);
+    }
+    run_limbo_mutation(&project_path, &args)
+}
+
+#[tauri::command]
+fn add_task(
+    project_path: String,
+    name: String,
+    description: Option<String>,
+    action: Option<String>,
+    verify: Option<String>,
+    result: Option<String>,
+    parent: Option<String>,
+) -> Result<Vec<Task>, String> {
+    let mut args: Vec<String> = vec!["add".into(), name];
+    if let Some(d) = description {
+        args.extend(["--description".into(), d]);
+    }
+    if let Some(a) = action {
+        args.extend(["--action".into(), a]);
+    }
+    if let Some(v) = verify {
+        args.extend(["--verify".into(), v]);
+    }
+    if let Some(r) = result {
+        args.extend(["--result".into(), r]);
+    }
+    if let Some(p) = parent {
+        args.extend(["--parent".into(), p]);
+    }
+    run_limbo_mutation(&project_path, &args)
+}
+
+#[tauri::command]
+fn edit_task(
+    project_path: String,
+    task_id: String,
+    name: Option<String>,
+    description: Option<String>,
+    action: Option<String>,
+    verify: Option<String>,
+    result: Option<String>,
+) -> Result<Vec<Task>, String> {
+    let mut args: Vec<String> = vec!["edit".into(), task_id];
+    if let Some(n) = name {
+        args.extend(["--name".into(), n]);
+    }
+    if let Some(d) = description {
+        args.extend(["--description".into(), d]);
+    }
+    if let Some(a) = action {
+        args.extend(["--action".into(), a]);
+    }
+    if let Some(v) = verify {
+        args.extend(["--verify".into(), v]);
+    }
+    if let Some(r) = result {
+        args.extend(["--result".into(), r]);
+    }
+    run_limbo_mutation(&project_path, &args)
+}
+
+#[tauri::command]
+fn add_task_note(
+    project_path: String,
+    task_id: String,
+    message: String,
+) -> Result<Vec<Task>, String> {
+    let args: Vec<String> = vec!["note".into(), task_id, message];
+    run_limbo_mutation(&project_path, &args)
+}
+
+#[tauri::command]
+fn delete_task(project_path: String, task_id: String) -> Result<Vec<Task>, String> {
+    let args: Vec<String> = vec!["delete".into(), task_id];
+    run_limbo_mutation(&project_path, &args)
+}
+
+// --- Watcher ---
+
+fn watch_tasks(handle: tauri::AppHandle) {
+    let mut cache: HashMap<String, String> = HashMap::new();
+    loop {
+        let config = load_config();
+        let projects: Vec<(String, PathBuf)> = config
+            .projects
+            .into_iter()
+            .map(|p| (p.name, expand_tilde(&p.path)))
+            .filter(|(_, path)| path.join(".limbo").is_dir())
+            .collect();
+
+        for (name, path) in &projects {
+            if let Ok(output) = Command::new("limbo")
+                .args(["list", "--show-all"])
+                .current_dir(path)
+                .output()
+                && output.status.success()
+            {
+                let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+                let had_prev = cache.contains_key(name);
+                let changed = cache.get(name) != Some(&stdout);
+                cache.insert(name.clone(), stdout.clone());
+                if had_prev && changed {
+                    let trimmed = stdout.trim();
+                    let tasks = if trimmed == "null" || trimmed.is_empty() {
+                        vec![]
+                    } else {
+                        serde_json::from_str(trimmed).unwrap_or_default()
+                    };
+                    let _ = handle.emit(
+                        "tasks-changed",
+                        TasksChanged {
+                            project: name.clone(),
+                            tasks,
+                        },
+                    );
+                }
+            }
+        }
+
+        std::thread::sleep(Duration::from_secs(2));
+    }
 }
 
 // --- App ---
@@ -198,7 +359,17 @@ pub fn run() {
             list_projects,
             list_tasks,
             get_task,
+            update_task_status,
+            add_task,
+            edit_task,
+            add_task_note,
+            delete_task,
         ])
+        .setup(|app| {
+            let handle = app.handle().clone();
+            std::thread::spawn(move || watch_tasks(handle));
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running Ordis");
 }

@@ -1,12 +1,14 @@
-import { onMount, For, Show, createMemo } from "solid-js";
+import { onMount, onCleanup, For, Show, createMemo, createSignal } from "solid-js";
 import {
-  projects, projectsLoading,
-  loadProjects, loadTasksForProject, toggleProject,
+  projectsLoading,
+  loadProjects, toggleProject,
   getProjectList, getFilteredRootTasks, getFilteredChildTasks, getTaskCounts,
   selectedTaskId, setSelectedTaskId,
   setViewMode,
   statusFilter, setStatusFilter,
   searchFilter, setSearchFilter,
+  updateTaskStatus, addTask, editTask, addTaskNote, deleteTask,
+  nextStatus, setupTaskListener,
   type Task, type StatusFilter,
 } from "../lib/tasks";
 import { createPane } from "../lib/store";
@@ -18,8 +20,15 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export default function Dashboard() {
+  let unlisten: (() => void) | undefined;
+
   onMount(() => {
     loadProjects();
+    setupTaskListener().then((fn) => { unlisten = fn; });
+  });
+
+  onCleanup(() => {
+    unlisten?.();
   });
 
   const projectList = createMemo(() => getProjectList());
@@ -71,11 +80,21 @@ export default function Dashboard() {
 }
 
 function ProjectCard(props: { state: ReturnType<typeof getProjectList>[0] }) {
+  const [addingTask, setAddingTask] = createSignal(false);
+  const [newTaskName, setNewTaskName] = createSignal("");
   const counts = createMemo(() => getTaskCounts(props.state.project.name));
   const rootTasks = createMemo(() => getFilteredRootTasks(props.state.project.name));
   const total = createMemo(() => counts().todo + counts().inProgress + counts().done);
   const expanded = () => props.state.expanded;
   const loading = () => props.state.loading;
+
+  const handleAddTask = async () => {
+    const name = newTaskName().trim();
+    if (!name) return;
+    await addTask(props.state.project.name, props.state.project.path, name);
+    setNewTaskName("");
+    setAddingTask(false);
+  };
 
   return (
     <div class={`project-card ${expanded() ? "project-card-expanded" : ""}`}>
@@ -97,6 +116,15 @@ function ProjectCard(props: { state: ReturnType<typeof getProjectList>[0] }) {
               <span class="project-card-no-tasks">0 tasks</span>
             </Show>
           </span>
+          <button
+            class="project-add-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!expanded()) toggleProject(props.state.project.name);
+              setAddingTask(true);
+            }}
+            title="Add task"
+          >+</button>
         </Show>
         <Show when={!props.state.project.has_limbo}>
           <span class="project-card-no-tasks">no limbo</span>
@@ -107,7 +135,7 @@ function ProjectCard(props: { state: ReturnType<typeof getProjectList>[0] }) {
           <Show when={loading()}>
             <div class="task-loading">Loading...</div>
           </Show>
-          <Show when={!loading() && rootTasks().length === 0}>
+          <Show when={!loading() && rootTasks().length === 0 && !addingTask()}>
             <div class="task-empty">No matching tasks</div>
           </Show>
           <Show when={!loading() && rootTasks().length > 0}>
@@ -124,6 +152,24 @@ function ProjectCard(props: { state: ReturnType<typeof getProjectList>[0] }) {
               </For>
             </div>
           </Show>
+          <Show when={addingTask()}>
+            <div class="add-task-form">
+              <input
+                class="add-task-input"
+                type="text"
+                placeholder="Task name..."
+                value={newTaskName()}
+                onInput={(e) => setNewTaskName(e.currentTarget.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleAddTask();
+                  if (e.key === "Escape") { setAddingTask(false); setNewTaskName(""); }
+                }}
+                ref={(el) => setTimeout(() => el.focus(), 0)}
+              />
+              <button class="add-task-submit" onClick={handleAddTask}>Add</button>
+              <button class="add-task-cancel" onClick={() => { setAddingTask(false); setNewTaskName(""); }}>&times;</button>
+            </div>
+          </Show>
         </div>
       </Show>
     </div>
@@ -131,6 +177,9 @@ function ProjectCard(props: { state: ReturnType<typeof getProjectList>[0] }) {
 }
 
 function TaskItem(props: { task: Task; projectName: string; projectPath: string; depth: number }) {
+  const [noteText, setNoteText] = createSignal("");
+  const [editingField, setEditingField] = createSignal<string | null>(null);
+  const [editValue, setEditValue] = createSignal("");
   const children = createMemo(() => getFilteredChildTasks(props.projectName, props.task.id));
   const isSelected = createMemo(() => {
     const sel = selectedTaskId();
@@ -155,10 +204,74 @@ function TaskItem(props: { task: Task; projectName: string; projectPath: string;
     }
   };
 
+  const handleStatusCycle = (e: MouseEvent) => {
+    e.stopPropagation();
+    updateTaskStatus(
+      props.projectName,
+      props.projectPath,
+      props.task.id,
+      nextStatus(props.task.status),
+    );
+  };
+
   const handleLaunch = (e: MouseEvent) => {
     e.stopPropagation();
     createPane(props.projectPath);
     setViewMode("workspace");
+  };
+
+  const handleDelete = (e: MouseEvent) => {
+    e.stopPropagation();
+    deleteTask(props.projectName, props.projectPath, props.task.id);
+  };
+
+  const handleAddNote = () => {
+    const text = noteText().trim();
+    if (!text) return;
+    addTaskNote(props.projectName, props.projectPath, props.task.id, text);
+    setNoteText("");
+  };
+
+  const startEdit = (field: string, currentValue: string) => {
+    setEditingField(field);
+    setEditValue(currentValue);
+  };
+
+  const saveEdit = () => {
+    const field = editingField();
+    const value = editValue().trim();
+    if (!field || !value) { setEditingField(null); return; }
+    editTask(props.projectName, props.projectPath, props.task.id, { [field]: value });
+    setEditingField(null);
+  };
+
+  const renderField = (label: string, field: string, value: string | undefined) => {
+    if (!value && !isSelected()) return null;
+    return (
+      <div class="task-detail-field">
+        <span class="task-detail-label">{label}</span>
+        <Show when={editingField() === field} fallback={
+          <span
+            class="task-detail-value"
+            onClick={() => startEdit(field, value || "")}
+            title="Click to edit"
+          >{value || <span class="task-detail-empty">Click to set</span>}</span>
+        }>
+          <input
+            class="task-edit-input"
+            type="text"
+            value={editValue()}
+            onInput={(e) => setEditValue(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") saveEdit();
+              if (e.key === "Escape") setEditingField(null);
+            }}
+            onBlur={saveEdit}
+            ref={(el) => setTimeout(() => el.focus(), 0)}
+          />
+        </Show>
+      </div>
+    );
   };
 
   return (
@@ -168,34 +281,27 @@ function TaskItem(props: { task: Task; projectName: string; projectPath: string;
         style={{ "padding-left": `${12 + props.depth * 16}px` }}
         onClick={handleSelect}
       >
-        <span class={`status-dot ${statusClass()}`} title={statusLabel()} />
-        <span class={`task-status-label task-status-${props.task.status}`}>{statusLabel()}</span>
+        <span
+          class={`status-dot status-dot-clickable ${statusClass()}`}
+          title={`${statusLabel()} — click to cycle`}
+          onClick={handleStatusCycle}
+        />
+        <span
+          class={`task-status-label task-status-${props.task.status} task-status-clickable`}
+          onClick={handleStatusCycle}
+        >{statusLabel()}</span>
         <span class="task-id">{props.task.id}</span>
         <span class="task-name">{props.task.name}</span>
+        <button class="task-delete-btn" onClick={handleDelete} title="Delete task">&times;</button>
         <button class="task-launch" onClick={handleLaunch} title="Launch session">
           &#x25B6;
         </button>
       </div>
       <Show when={isSelected()}>
         <div class="task-detail" style={{ "padding-left": `${28 + props.depth * 16}px` }}>
-          <Show when={props.task.action}>
-            <div class="task-detail-field">
-              <span class="task-detail-label">Action</span>
-              <span>{props.task.action}</span>
-            </div>
-          </Show>
-          <Show when={props.task.verify}>
-            <div class="task-detail-field">
-              <span class="task-detail-label">Verify</span>
-              <span>{props.task.verify}</span>
-            </div>
-          </Show>
-          <Show when={props.task.result}>
-            <div class="task-detail-field">
-              <span class="task-detail-label">Result</span>
-              <span>{props.task.result}</span>
-            </div>
-          </Show>
+          {renderField("Action", "action", props.task.action)}
+          {renderField("Verify", "verify", props.task.verify)}
+          {renderField("Result", "result", props.task.result)}
           <Show when={props.task.owner}>
             <div class="task-detail-field">
               <span class="task-detail-label">Owner</span>
@@ -210,6 +316,19 @@ function TaskItem(props: { task: Task; projectName: string; projectPath: string;
               </For>
             </div>
           </Show>
+          <div class="task-note-form">
+            <input
+              class="task-note-input"
+              type="text"
+              placeholder="Add note..."
+              value={noteText()}
+              onInput={(e) => setNoteText(e.currentTarget.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleAddNote();
+              }}
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
         </div>
       </Show>
       <For each={children()}>

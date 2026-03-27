@@ -1,10 +1,9 @@
-import { onMount, For, Show, createMemo } from "solid-js";
+import { onMount, onCleanup, For, Show, createMemo } from "solid-js";
 import {
-  projects,
   loadProjects, toggleProject,
   getProjectList, getRootTasks, getChildTasks, getTaskCounts,
-  selectedTaskId, setSelectedTaskId,
   setViewMode,
+  updateTaskStatus, nextStatus, setupTaskListener,
   type Task,
 } from "../lib/tasks";
 import { createPane } from "../lib/store";
@@ -14,8 +13,15 @@ interface Props {
 }
 
 export default function TaskSidebar(props: Props) {
+  let unlisten: (() => void) | undefined;
+
   onMount(() => {
     loadProjects();
+    setupTaskListener().then((fn) => { unlisten = fn; });
+  });
+
+  onCleanup(() => {
+    unlisten?.();
   });
 
   const projectList = createMemo(() => getProjectList());
@@ -87,6 +93,16 @@ function SidebarTask(props: { task: Task; projectName: string; projectPath: stri
     }
   };
 
+  const handleStatusCycle = (e: MouseEvent) => {
+    e.stopPropagation();
+    updateTaskStatus(
+      props.projectName,
+      props.projectPath,
+      props.task.id,
+      nextStatus(props.task.status),
+    );
+  };
+
   const handleLaunch = (e: MouseEvent) => {
     e.stopPropagation();
     createPane(props.projectPath);
@@ -100,7 +116,11 @@ function SidebarTask(props: { task: Task; projectName: string; projectPath: stri
         style={{ "padding-left": `${8 + props.depth * 12}px` }}
         title={props.task.action || props.task.name}
       >
-        <span class={`status-dot ${statusDot()}`} />
+        <span
+          class={`status-dot status-dot-clickable ${statusDot()}`}
+          onClick={handleStatusCycle}
+          title="Click to cycle status"
+        />
         <span class="sidebar-task-id">{props.task.id}</span>
         <span class="sidebar-task-name">{props.task.name}</span>
         <button class="sidebar-task-launch" onClick={handleLaunch}>&#x25B6;</button>
