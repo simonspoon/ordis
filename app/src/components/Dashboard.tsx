@@ -91,9 +91,13 @@ function ProjectCard(props: { state: ReturnType<typeof getProjectList>[0] }) {
   const handleAddTask = async () => {
     const name = newTaskName().trim();
     if (!name) return;
-    await addTask(props.state.project.name, props.state.project.path, name);
-    setNewTaskName("");
-    setAddingTask(false);
+    try {
+      await addTask(props.state.project.name, props.state.project.path, name);
+      setNewTaskName("");
+      setAddingTask(false);
+    } catch (e) {
+      console.error("Failed to add task:", e);
+    }
   };
 
   return (

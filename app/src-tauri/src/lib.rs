@@ -235,15 +235,9 @@ fn add_task(
     if let Some(d) = description {
         args.extend(["--description".into(), d]);
     }
-    if let Some(a) = action {
-        args.extend(["--action".into(), a]);
-    }
-    if let Some(v) = verify {
-        args.extend(["--verify".into(), v]);
-    }
-    if let Some(r) = result {
-        args.extend(["--result".into(), r]);
-    }
+    args.extend(["--action".into(), action.unwrap_or_else(|| "-".into())]);
+    args.extend(["--verify".into(), verify.unwrap_or_else(|| "-".into())]);
+    args.extend(["--result".into(), result.unwrap_or_else(|| "-".into())]);
     if let Some(p) = parent {
         args.extend(["--parent".into(), p]);
     }

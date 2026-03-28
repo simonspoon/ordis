@@ -100,7 +100,8 @@ export default function App() {
         <Dashboard />
       </Show>
 
-      <Show when={viewMode() === "workspace"}>
+      {/* Workspace view — always in DOM to preserve terminal sessions */}
+      <div style={{ display: viewMode() === "workspace" ? "contents" : "none" }}>
         <PaneBar />
         <div class="workspace-layout">
           <TaskSidebar visible={sidebarVisible()} />
@@ -148,7 +149,7 @@ export default function App() {
             </Show>
           </div>
         </div>
-      </Show>
+      </div>
     </div>
   );
 }

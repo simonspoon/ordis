@@ -95,6 +95,10 @@ export default function TerminalPane(props: Props) {
       rows: term.rows,
       cwd: currentCwd,
       name: "xterm-256color",
+      env: {
+        TERM: "xterm-256color",
+        COLORTERM: "truecolor",
+      },
     });
 
     pty.onData((data: Uint8Array) => {
