@@ -64,12 +64,8 @@ export default function App() {
     onCleanup(() => window.removeEventListener("keydown", onKeyDown));
   });
 
-  const switchToWorkspace = async () => {
+  const switchToWorkspace = () => {
     setViewMode("workspace");
-    if (getLeafPaneIds().length === 0) {
-      const cwd = await invoke<string>("get_cwd");
-      createPane(cwd);
-    }
   };
 
   const positions = createMemo(() => computePositions(layout()));
