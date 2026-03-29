@@ -38,7 +38,14 @@ ordis/
 
 - Embedded terminal running Claude Code via PTY
 - Multi-pane support — run multiple Claude sessions side by side
+- Drag-and-drop pane reordering via tab headers
 - Pane zoom — temporarily maximize any pane with Cmd+Shift+Enter
+- Terminal search — Cmd+F to search within terminal scrollback
+- Agent selector — pick agent type per pane from toolbar dropdown
+- Named workspaces — save/load pane layouts (stored in `~/.ordis/workspaces/`)
+- Terminal profiles — reusable cwd + agent + prompt presets in config.toml
+- Git integration — branch, dirty status, and ahead/behind in pane toolbar and status bar
+- Status bar — session count, project name, and git info at bottom of workspace
 - Command palette — Cmd+K fuzzy launcher for all actions
 - Session persistence — layout and pane state restored on launch
 - Toast notifications — error, warning, and info feedback

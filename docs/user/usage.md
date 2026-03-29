@@ -78,7 +78,30 @@ Ordis saves your pane layout and working directories to `~/.ordis/session.json` 
 
 ### Pane Toolbar
 
-Each pane has a toolbar showing the current working directory (abbreviated with `~`). Click it to open a native folder picker and change the directory. Changing the directory sends a `cd` command to the running Claude Code session.
+Each pane has a toolbar showing:
+
+| Element | Description |
+|---------|-------------|
+| Working directory | Abbreviated with `~`. Click to open a native folder picker. |
+| Git badge | Shows branch name, `*` for dirty, `↑N`/`↓N` for ahead/behind. Polls every 5 seconds. Only appears when the pane CWD is inside a git repo. |
+| Agent selector | Dropdown showing the current agent type (defaults to "default"). Lists agents from `~/.claude/agents/` and installed plugins. |
+
+Changing the directory sends a `cd` command to the running Claude Code session.
+
+### Terminal Search
+
+Press **Cmd+F** while a pane is focused to open the search bar. Search is scoped to the focused pane's scrollback buffer.
+
+| Control | Action |
+|---------|--------|
+| Search input | Type to search. Matches highlight in the terminal. |
+| ↑ / ↓ buttons | Navigate between matches (previous / next) |
+| Close button (x) | Dismiss the search bar |
+| Escape | Also dismisses the search bar |
+
+### Drag-and-Drop Tabs
+
+Drag a tab header in the PaneBar to reorder panes. A visual indicator shows the drop target position. Dropping swaps the two panes in the layout tree.
 
 ### Split Dividers
 
@@ -93,6 +116,36 @@ Press **Cmd+B** to toggle the task sidebar in the Workspace view. It shows a com
 
 The sidebar is independent of the Dashboard -- it provides lightweight task awareness while working in terminals.
 
+### Status Bar
+
+A fixed bar at the bottom of the Workspace view showing:
+
+| Element | Description |
+|---------|-------------|
+| Session count | Number of active terminal panes (e.g., "3 sessions") |
+| Project name | Name of the current project directory |
+| Git branch | Branch name and dirty indicator (`*`) for the focused pane's CWD |
+
+The status bar updates automatically when you switch focus between panes.
+
+## Named Workspaces
+
+Save your current pane layout as a named workspace for quick restoration later.
+
+- **Save**: Open the command palette (**Cmd+K**) and select "Save Workspace As..." — enter a name when prompted
+- **Load**: Saved workspaces appear in the command palette as "Load Workspace: \<name>"
+- **Delete**: Use "Delete Workspace: \<name>" from the command palette
+
+Workspaces are stored as JSON files in `~/.ordis/workspaces/`. Each workspace captures the full layout tree and pane working directories.
+
+## Terminal Profiles
+
+Profiles are reusable presets defined in `~/.ordis/config.toml` under `[[profiles]]` sections. Each profile specifies a combination of working directory, agent type, and optional startup prompt.
+
+Profiles appear in the command palette as "Launch Profile: \<name>". Selecting one creates a new pane with the profile's settings applied.
+
+See [Getting Started](getting-started.md) for the profile configuration format.
+
 ## Command Palette
 
 Press **Cmd+K** to open the command palette. It provides fuzzy search across all available actions:
@@ -103,6 +156,10 @@ Press **Cmd+K** to open the command palette. It provides fuzzy search across all
 - Switch to Dashboard / Workspace
 - Toggle Task Sidebar
 - New Terminal Session
+- Save Workspace As...
+- Load Workspace: \<name> (for each saved workspace)
+- Delete Workspace: \<name>
+- Launch Profile: \<name> (for each configured profile)
 
 Type to filter, use arrow keys to navigate, and press Enter to execute. Press Escape to dismiss.
 
@@ -134,6 +191,7 @@ All shortcuts use the **Cmd** key (macOS):
 | **Cmd+D** | Split pane vertically | Workspace |
 | **Cmd+Shift+D** | Split pane horizontally | Workspace |
 | **Cmd+Shift+Enter** | Toggle pane zoom | Workspace |
+| **Cmd+F** | Search terminal scrollback | Workspace |
 | **Cmd+W** | Close active pane | Workspace (only if multiple panes) |
 | **Cmd+3** to **Cmd+9** | Focus pane by index | Workspace |
 

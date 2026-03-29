@@ -6,7 +6,7 @@ Ordis is a Tauri 2 desktop application that embeds Claude Code inside PTY-backed
 
 ```
 ordis/
-├── Cargo.toml              # Workspace root (edition 2024, v0.2.0)
+├── Cargo.toml              # Workspace root (edition 2024)
 ├── app/
 │   ├── package.json        # SolidJS + xterm.js + tauri-pty
 │   ├── vite.config.ts      # Vite with vite-plugin-solid
@@ -22,7 +22,8 @@ ordis/
 │   │   └── components/
 │   │       ├── Dashboard.tsx      # Project grid, task CRUD, filtering
 │   │       ├── TerminalPane.tsx   # xterm.js + PTY lifecycle per pane
-│   │       ├── PaneBar.tsx        # Tab bar with zoom indicator
+│   │       ├── PaneBar.tsx        # Tab bar with zoom indicator, drag-and-drop reordering
+│   │       ├── StatusBar.tsx      # Bottom status bar (session count, project, git branch)
 │   │       ├── SplitDivider.tsx   # Draggable split resize handles
 │   │       ├── TaskSidebar.tsx    # Collapsible task list in workspace view
 │   │       ├── Toast.tsx          # Toast notification container
@@ -44,12 +45,13 @@ All backend logic lives in `app/src-tauri/src/lib.rs`. There is no module splitt
 
 ### Configuration
 
-Ordis reads `~/.ordis/config.toml` at startup. The config has two fields:
+Ordis reads `~/.ordis/config.toml` at startup. The config has three top-level fields:
 
 | Field | Type | Purpose |
 |-------|------|---------|
 | `default_cwd` | `Option<String>` | Default working directory for new panes. Supports `~` expansion. Falls back to `$HOME`. |
 | `projects` | `Vec<{name, path}>` | Named project directories shown in the Dashboard. Each is checked for a `.limbo/` directory to determine task support. |
+| `profiles` | `Vec<{name, cwd?, agent?, prompt?}>` | Terminal profiles — reusable presets launchable from the command palette. |
 
 ### Tauri Commands
 
@@ -70,6 +72,13 @@ These are the IPC commands exposed to the frontend via `tauri::generate_handler!
 | `check_startup` | -- | `StartupChecks` | Check limbo availability and validate config.toml |
 | `save_session` | `data: String` | `()` | Write session JSON to `~/.ordis/session.json` |
 | `load_session` | -- | `Option<String>` | Read session JSON from `~/.ordis/session.json` |
+| `get_git_info` | `path: String` | `Option<GitInfo>` | Get branch, dirty status, ahead/behind for a path. Returns `None` if not a git repo. |
+| `list_profiles` | -- | `Vec<Profile>` | Load profiles from config.toml with tilde expansion on cwd |
+| `list_agents` | -- | `Vec<String>` | Scan `~/.claude/agents/` and plugin cache for available agent `.md` files |
+| `list_workspaces` | -- | `Vec<String>` | List saved workspace names from `~/.ordis/workspaces/*.json` |
+| `save_workspace` | `name, data` | `()` | Save workspace layout JSON to `~/.ordis/workspaces/<name>.json` |
+| `load_workspace` | `name: String` | `Option<String>` | Load workspace layout JSON by name |
+| `delete_workspace` | `name: String` | `()` | Delete a saved workspace file |
 
 All mutation commands follow a pattern: run the limbo CLI as a subprocess, then call `fetch_tasks_for_project()` to return the full refreshed task list. The frontend replaces its entire task array for that project on each mutation response.
 
@@ -137,7 +146,7 @@ interface PaneState {
 }
 ```
 
-Stored in a SolidJS reactive store (`Record<string, PaneState>`). Operations: `createPane`, `splitPane`, `closePane`, `setPaneCwd`, `toggleZoom`, `saveSession`, `restoreSession`.
+Stored in a SolidJS reactive store (`Record<string, PaneState>`). Operations: `createPane`, `splitPane`, `closePane`, `setPaneCwd`, `toggleZoom`, `swapPanes`, `saveSession`, `restoreSession`.
 
 ### Terminal Lifecycle (TerminalPane.tsx)
 
