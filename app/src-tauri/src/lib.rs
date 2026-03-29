@@ -289,6 +289,64 @@ fn delete_task(project_path: String, task_id: String) -> Result<Vec<Task>, Strin
     run_limbo_mutation(&project_path, &args)
 }
 
+// --- Startup Checks ---
+
+#[derive(Serialize, Clone)]
+struct StartupChecks {
+    limbo_available: bool,
+    config_error: Option<String>,
+}
+
+#[tauri::command]
+fn check_startup() -> StartupChecks {
+    // Check limbo availability
+    let limbo_available = Command::new("limbo")
+        .arg("--version")
+        .output()
+        .is_ok_and(|o| o.status.success());
+
+    // Check config validation
+    let config_error = (|| {
+        let home = dirs::home_dir()?;
+        let path = home.join(".ordis").join("config.toml");
+        let contents = fs::read_to_string(&path).ok()?;
+        match toml::from_str::<Config>(&contents) {
+            Ok(_) => None,
+            Err(e) => Some(format!("config.toml: {e}")),
+        }
+    })();
+
+    StartupChecks {
+        limbo_available,
+        config_error,
+    }
+}
+
+// --- Session Persistence ---
+
+fn session_path() -> Option<PathBuf> {
+    dirs::home_dir().map(|h| h.join(".ordis").join("session.json"))
+}
+
+#[tauri::command]
+fn save_session(data: String) -> Result<(), String> {
+    let path = session_path().ok_or("Could not resolve home directory")?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create .ordis dir: {e}"))?;
+    }
+    fs::write(&path, &data).map_err(|e| format!("Failed to save session: {e}"))
+}
+
+#[tauri::command]
+fn load_session() -> Result<Option<String>, String> {
+    let path = session_path().ok_or("Could not resolve home directory")?;
+    if !path.exists() {
+        return Ok(None);
+    }
+    let contents = fs::read_to_string(&path).map_err(|e| format!("Failed to read session: {e}"))?;
+    Ok(Some(contents))
+}
+
 // --- Watcher ---
 
 fn watch_tasks(handle: tauri::AppHandle) {
@@ -358,6 +416,9 @@ pub fn run() {
             edit_task,
             add_task_note,
             delete_task,
+            save_session,
+            load_session,
+            check_startup,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

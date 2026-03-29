@@ -2,24 +2,132 @@ import { onMount, onCleanup, For, Show, createMemo, createSignal } from "solid-j
 import { invoke } from "@tauri-apps/api/core";
 import {
   panes, layout, activePaneId, setActivePaneId,
-  createPane, splitPane, closePane,
-  getLeafPaneIds, computePositions, computeDividers,
+  createPane, splitPane, closePane, toggleZoom, isZoomed,
+  getLeafPaneIds, computeEffectivePositions, computeDividers,
+  saveSession, restoreSession,
 } from "./lib/store";
 import { viewMode, setViewMode } from "./lib/tasks";
+import { toast } from "./lib/toast";
+import { registerCommand, togglePalette, paletteOpen, closePalette } from "./lib/commands";
 import PaneBar from "./components/PaneBar";
 import TerminalPane from "./components/TerminalPane";
 import SplitDivider from "./components/SplitDivider";
 import Dashboard from "./components/Dashboard";
 import TaskSidebar from "./components/TaskSidebar";
+import ToastContainer from "./components/Toast";
+import CommandPalette from "./components/CommandPalette";
 import "./App.css";
 
 export default function App() {
   const [sidebarVisible, setSidebarVisible] = createSignal(false);
 
+  // Register commands
+  onMount(() => {
+    registerCommand({
+      id: "view-dashboard",
+      label: "Switch to Dashboard",
+      shortcut: "Cmd+1",
+      action: () => setViewMode("dashboard"),
+    });
+    registerCommand({
+      id: "view-workspace",
+      label: "Switch to Workspace",
+      shortcut: "Cmd+2",
+      action: () => switchToWorkspace(),
+    });
+    registerCommand({
+      id: "toggle-sidebar",
+      label: "Toggle Task Sidebar",
+      shortcut: "Cmd+B",
+      action: () => setSidebarVisible((v) => !v),
+    });
+    registerCommand({
+      id: "split-vertical",
+      label: "Split Pane Vertical",
+      shortcut: "Cmd+D",
+      action: () => splitPane("vertical"),
+    });
+    registerCommand({
+      id: "split-horizontal",
+      label: "Split Pane Horizontal",
+      shortcut: "Cmd+Shift+D",
+      action: () => splitPane("horizontal"),
+    });
+    registerCommand({
+      id: "close-pane",
+      label: "Close Current Pane",
+      shortcut: "Cmd+W",
+      action: () => {
+        const active = activePaneId();
+        if (active && getLeafPaneIds().length > 1) closePane(active);
+      },
+    });
+    registerCommand({
+      id: "zoom-pane",
+      label: "Toggle Pane Zoom",
+      shortcut: "Cmd+Shift+Enter",
+      action: () => toggleZoom(),
+    });
+    registerCommand({
+      id: "new-session",
+      label: "New Terminal Session",
+      action: async () => {
+        const cwd = await invoke<string>("get_cwd");
+        createPane(cwd);
+        setViewMode("workspace");
+      },
+    });
+  });
+
+  // Startup checks and session restore
+  onMount(async () => {
+    // Run startup checks
+    try {
+      const checks = await invoke<{ limbo_available: boolean; config_error: string | null }>("check_startup");
+      if (!checks.limbo_available) {
+        toast.warning("limbo CLI not found — task management features are unavailable");
+      }
+      if (checks.config_error) {
+        toast.error(`Config error: ${checks.config_error}`);
+      }
+    } catch {
+      // Startup checks are best-effort
+    }
+
+    // Restore previous session
+    const restored = await restoreSession();
+    if (restored) {
+      setViewMode("workspace");
+    }
+  });
+
+  // Save session on window close
+  onMount(() => {
+    const onBeforeUnload = () => {
+      saveSession();
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    onCleanup(() => window.removeEventListener("beforeunload", onBeforeUnload));
+  });
+
   // Keyboard shortcuts
   onMount(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      // Escape closes palette (no meta key needed)
+      if (e.key === "Escape" && paletteOpen()) {
+        e.preventDefault();
+        closePalette();
+        return;
+      }
+
       if (!e.metaKey) return;
+
+      // Command palette: Cmd+K (global)
+      if (e.key === "k" && !e.shiftKey) {
+        e.preventDefault();
+        togglePalette();
+        return;
+      }
 
       // View mode: Cmd+1 = Dashboard, Cmd+2 = Workspace
       if (e.key === "1" && !e.shiftKey && viewMode() !== "dashboard") {
@@ -43,7 +151,10 @@ export default function App() {
       // Workspace-only shortcuts
       if (viewMode() !== "workspace") return;
 
-      if (e.key === "d" && !e.shiftKey) {
+      if (e.key === "Enter" && e.shiftKey) {
+        e.preventDefault();
+        toggleZoom();
+      } else if (e.key === "d" && !e.shiftKey) {
         e.preventDefault();
         splitPane("vertical");
       } else if (e.key === "d" && e.shiftKey) {
@@ -68,8 +179,8 @@ export default function App() {
     setViewMode("workspace");
   };
 
-  const positions = createMemo(() => computePositions(layout()));
-  const dividers = createMemo(() => computeDividers(layout()));
+  const positions = createMemo(() => computeEffectivePositions(layout()));
+  const dividers = createMemo(() => isZoomed() ? [] : computeDividers(layout()));
   const leafIds = createMemo(() => getLeafPaneIds());
 
   return (
@@ -122,15 +233,21 @@ export default function App() {
               <For each={leafIds()}>
                 {(id) => {
                   const pos = () => positions()[id];
+                  const hidden = () => {
+                    const p = pos();
+                    return p ? p.w === 0 && p.h === 0 : false;
+                  };
                   return (
                     <Show when={panes[id] && pos()}>
                       <div
                         class="pane-position"
                         style={{
-                          left: `${pos()!.x * 100}%`,
-                          top: `${pos()!.y * 100}%`,
-                          width: `${pos()!.w * 100}%`,
-                          height: `${pos()!.h * 100}%`,
+                          left: hidden() ? "0" : `${pos()!.x * 100}%`,
+                          top: hidden() ? "0" : `${pos()!.y * 100}%`,
+                          width: hidden() ? "0" : `${pos()!.w * 100}%`,
+                          height: hidden() ? "0" : `${pos()!.h * 100}%`,
+                          visibility: hidden() ? "hidden" : "visible",
+                          overflow: hidden() ? "hidden" : "visible",
                         }}
                       >
                         <TerminalPane paneId={id} />
@@ -146,6 +263,9 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      <CommandPalette />
+      <ToastContainer />
     </div>
   );
 }

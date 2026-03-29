@@ -5,6 +5,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { spawn } from "tauri-pty";
 import { open } from "@tauri-apps/plugin-dialog";
 import { panes, setPaneCwd, closePane, activePaneId, setActivePaneId } from "../lib/store";
+import { toast } from "../lib/toast";
 import "@xterm/xterm/css/xterm.css";
 
 interface Props {
@@ -76,7 +77,7 @@ export default function TerminalPane(props: Props) {
       webgl.onContextLoss(() => webgl.dispose());
       term.loadAddon(webgl);
     } catch {
-      // DOM renderer is fine
+      toast.warning("WebGL unavailable — using fallback renderer (may be slower)");
     }
 
     fitAddon.fit();
@@ -90,16 +91,23 @@ export default function TerminalPane(props: Props) {
     if (pane?.prompt) {
       command += ` ${shellEscape(pane.prompt)}`;
     }
-    pty = spawn("/bin/zsh", ["-l", "-c", command], {
-      cols: term.cols,
-      rows: term.rows,
-      cwd: currentCwd,
-      name: "xterm-256color",
-      env: {
-        TERM: "xterm-256color",
-        COLORTERM: "truecolor",
-      },
-    });
+
+    try {
+      pty = spawn("/bin/zsh", ["-l", "-c", command], {
+        cols: term.cols,
+        rows: term.rows,
+        cwd: currentCwd,
+        name: "xterm-256color",
+        env: {
+          TERM: "xterm-256color",
+          COLORTERM: "truecolor",
+        },
+      });
+    } catch (e) {
+      toast.error(`Failed to spawn terminal: ${e}`);
+      term.write(`\r\n\x1b[31mFailed to spawn terminal: ${e}\x1b[0m\r\n`);
+      return;
+    }
 
     pty.onData((data: Uint8Array) => {
       term!.write(new Uint8Array(data));

@@ -1,5 +1,6 @@
 import { createSignal } from "solid-js";
 import { createStore, produce } from "solid-js/store";
+import { invoke } from "@tauri-apps/api/core";
 
 // --- Types ---
 
@@ -42,6 +43,7 @@ export interface DividerInfo {
 export const [panes, setPanes] = createStore<Record<string, PaneState>>({});
 export const [activePaneId, setActivePaneId] = createSignal("");
 export const [layout, setLayout] = createSignal<LayoutNode | null>(null);
+export const [zoomedPaneId, setZoomedPaneId] = createSignal<string | null>(null);
 
 // --- Derived ---
 
@@ -99,6 +101,38 @@ export function computeDividers(
   return [divider, ...computeDividers(first, r1), ...computeDividers(second, r2)];
 }
 
+export function computeEffectivePositions(
+  node: LayoutNode | null,
+): Record<string, Rect> {
+  const zoomed = zoomedPaneId();
+  if (zoomed) {
+    const allIds = getLeafPaneIds(node);
+    const result: Record<string, Rect> = {};
+    for (const id of allIds) {
+      result[id] = id === zoomed
+        ? { x: 0, y: 0, w: 1, h: 1 }
+        : { x: 0, y: 0, w: 0, h: 0 };
+    }
+    return result;
+  }
+  return computePositions(node);
+}
+
+export function toggleZoom() {
+  const active = activePaneId();
+  if (!active) return;
+  const current = zoomedPaneId();
+  if (current === active) {
+    setZoomedPaneId(null);
+  } else {
+    setZoomedPaneId(active);
+  }
+}
+
+export function isZoomed(): boolean {
+  return zoomedPaneId() !== null;
+}
+
 // --- Operations ---
 
 export function createPane(cwd: string, opts?: { agent?: string; prompt?: string }): string {
@@ -136,6 +170,7 @@ export function splitPane(direction: "horizontal" | "vertical") {
 }
 
 export function closePane(paneId: string) {
+  if (zoomedPaneId() === paneId) setZoomedPaneId(null);
   setPanes(produce((p) => { delete p[paneId]; }));
   setLayout((prev) => (prev ? removeLeaf(prev, paneId) : null));
   if (activePaneId() === paneId) {
@@ -147,6 +182,64 @@ export function closePane(paneId: string) {
 export function updateSplitRatio(splitId: string, ratio: number) {
   const clamped = Math.max(0.15, Math.min(0.85, ratio));
   setLayout((prev) => (prev ? setRatioById(prev, splitId, clamped) : prev));
+}
+
+// --- Session Persistence ---
+
+interface SessionData {
+  layout: LayoutNode | null;
+  panes: Record<string, { cwd: string }>;
+  activePaneId: string;
+}
+
+export async function saveSession(): Promise<void> {
+  const currentLayout = layout();
+  const leafIds = getLeafPaneIds(currentLayout);
+  const paneData: Record<string, { cwd: string }> = {};
+  for (const id of leafIds) {
+    const p = panes[id];
+    if (p) paneData[id] = { cwd: p.cwd };
+  }
+  const data: SessionData = {
+    layout: currentLayout,
+    panes: paneData,
+    activePaneId: activePaneId(),
+  };
+  try {
+    await invoke("save_session", { data: JSON.stringify(data) });
+  } catch {
+    // Best-effort save — don't disturb the user on quit
+  }
+}
+
+export async function restoreSession(): Promise<boolean> {
+  try {
+    const raw = await invoke<string | null>("load_session");
+    if (!raw) return false;
+    const data: SessionData = JSON.parse(raw);
+    if (!data.layout) return false;
+
+    // Validate: ensure all leaf pane IDs have corresponding pane data
+    const leafIds = getLeafPaneIds(data.layout);
+    if (leafIds.length === 0) return false;
+
+    // Validate: ensure all pane cwds exist (gracefully skip invalid ones)
+    for (const id of leafIds) {
+      const paneInfo = data.panes[id];
+      const cwd = paneInfo?.cwd || "";
+      setPanes(id, { id, cwd });
+    }
+
+    setLayout(data.layout);
+    if (data.activePaneId && leafIds.includes(data.activePaneId)) {
+      setActivePaneId(data.activePaneId);
+    } else {
+      setActivePaneId(leafIds[0]);
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // --- Helpers ---

@@ -2,6 +2,7 @@ import { createSignal } from "solid-js";
 import { createStore, produce } from "solid-js/store";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { toast } from "./toast";
 
 // --- Types ---
 
@@ -178,7 +179,7 @@ export async function loadTasksForProject(projectName: string) {
     const tasks = await invoke<Task[]>("list_tasks", { projectPath: state.project.path });
     setProjects(projectName, "tasks", tasks);
   } catch (e) {
-    console.error(`Failed to load tasks for ${projectName}:`, e);
+    toast.error(`Failed to load tasks for ${projectName}: ${e}`);
     setProjects(projectName, "tasks", []);
   } finally {
     setProjects(projectName, "loading", false);
@@ -220,13 +221,17 @@ export async function updateTaskStatus(
   status: string,
   outcome?: string,
 ) {
-  const tasks = await invoke<Task[]>("update_task_status", {
-    projectPath,
-    taskId,
-    status,
-    outcome: outcome || null,
-  });
-  setProjects(projectName, "tasks", tasks);
+  try {
+    const tasks = await invoke<Task[]>("update_task_status", {
+      projectPath,
+      taskId,
+      status,
+      outcome: outcome || null,
+    });
+    setProjects(projectName, "tasks", tasks);
+  } catch (e) {
+    toast.error(`Failed to update task ${taskId}: ${e}`);
+  }
 }
 
 export async function addTask(
@@ -241,16 +246,20 @@ export async function addTask(
     parent?: string;
   },
 ) {
-  const tasks = await invoke<Task[]>("add_task", {
-    projectPath,
-    name,
-    description: opts?.description || null,
-    action: opts?.action || null,
-    verify: opts?.verify || null,
-    result: opts?.result || null,
-    parent: opts?.parent || null,
-  });
-  setProjects(projectName, "tasks", tasks);
+  try {
+    const tasks = await invoke<Task[]>("add_task", {
+      projectPath,
+      name,
+      description: opts?.description || null,
+      action: opts?.action || null,
+      verify: opts?.verify || null,
+      result: opts?.result || null,
+      parent: opts?.parent || null,
+    });
+    setProjects(projectName, "tasks", tasks);
+  } catch (e) {
+    toast.error(`Failed to add task: ${e}`);
+  }
 }
 
 export async function editTask(
@@ -265,16 +274,20 @@ export async function editTask(
     result?: string;
   },
 ) {
-  const tasks = await invoke<Task[]>("edit_task", {
-    projectPath,
-    taskId,
-    name: fields.name || null,
-    description: fields.description || null,
-    action: fields.action || null,
-    verify: fields.verify || null,
-    result: fields.result || null,
-  });
-  setProjects(projectName, "tasks", tasks);
+  try {
+    const tasks = await invoke<Task[]>("edit_task", {
+      projectPath,
+      taskId,
+      name: fields.name || null,
+      description: fields.description || null,
+      action: fields.action || null,
+      verify: fields.verify || null,
+      result: fields.result || null,
+    });
+    setProjects(projectName, "tasks", tasks);
+  } catch (e) {
+    toast.error(`Failed to edit task ${taskId}: ${e}`);
+  }
 }
 
 export async function addTaskNote(
@@ -283,12 +296,16 @@ export async function addTaskNote(
   taskId: string,
   message: string,
 ) {
-  const tasks = await invoke<Task[]>("add_task_note", {
-    projectPath,
-    taskId,
-    message,
-  });
-  setProjects(projectName, "tasks", tasks);
+  try {
+    const tasks = await invoke<Task[]>("add_task_note", {
+      projectPath,
+      taskId,
+      message,
+    });
+    setProjects(projectName, "tasks", tasks);
+  } catch (e) {
+    toast.error(`Failed to add note to ${taskId}: ${e}`);
+  }
 }
 
 export async function deleteTask(
@@ -296,15 +313,19 @@ export async function deleteTask(
   projectPath: string,
   taskId: string,
 ) {
-  const tasks = await invoke<Task[]>("delete_task", {
-    projectPath,
-    taskId,
-  });
-  setProjects(projectName, "tasks", tasks);
-  // Clear selection if deleted task was selected
-  const sel = selectedTaskId();
-  if (sel?.project === projectName && sel?.taskId === taskId) {
-    setSelectedTaskId(null);
+  try {
+    const tasks = await invoke<Task[]>("delete_task", {
+      projectPath,
+      taskId,
+    });
+    setProjects(projectName, "tasks", tasks);
+    // Clear selection if deleted task was selected
+    const sel = selectedTaskId();
+    if (sel?.project === projectName && sel?.taskId === taskId) {
+      setSelectedTaskId(null);
+    }
+  } catch (e) {
+    toast.error(`Failed to delete task ${taskId}: ${e}`);
   }
 }
 

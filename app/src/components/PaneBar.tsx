@@ -2,6 +2,7 @@ import { For, Show } from "solid-js";
 import {
   panes, activePaneId, setActivePaneId,
   closePane, splitPane, getLeafPaneIds,
+  isZoomed, toggleZoom,
 } from "../lib/store";
 
 export default function PaneBar() {
@@ -43,6 +44,15 @@ export default function PaneBar() {
         </For>
       </div>
       <div class="pane-actions">
+        <Show when={isZoomed()}>
+          <button
+            class="pane-action pane-zoom-indicator"
+            onClick={toggleZoom}
+            title="Unzoom (Cmd+Shift+Enter)"
+          >
+            ZOOMED
+          </button>
+        </Show>
         <button
           class="pane-action"
           onClick={() => splitPane("vertical")}
