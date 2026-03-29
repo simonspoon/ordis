@@ -50,8 +50,10 @@ See [architecture.md](architecture.md) for detailed module descriptions.
 
 1. Create the component in `app/src/components/`
 2. If it needs shared state, add signals/stores to the appropriate lib file:
-   - `lib/store.ts` -- pane and layout state
+   - `lib/store.ts` -- pane state, layout tree, zoom, session persistence
    - `lib/tasks.ts` -- project and task state
+   - `lib/toast.ts` -- toast notification state and actions
+   - `lib/commands.ts` -- command palette registry
 3. Import and render from `App.tsx` or the relevant parent component
 4. Add styles to `app/src/App.css`
 
@@ -114,7 +116,10 @@ To verify changes manually:
 2. Check Dashboard view loads with projects from `~/.ordis/config.toml`
 3. Switch to Workspace, verify a terminal pane spawns with Claude Code
 4. Test split/close pane operations
-5. If task features were changed, verify CRUD operations work against a project with `.limbo/` initialized
+5. Test pane zoom (**Cmd+Shift+Enter**) -- zoomed pane fills workspace, unzoom restores layout
+6. Test command palette (**Cmd+K**) -- opens, fuzzy search filters, Enter executes, Escape dismisses
+7. If task features were changed, verify CRUD operations work against a project with `.limbo/` initialized
+8. Close and relaunch -- verify session layout is restored from `~/.ordis/session.json`
 
 ## Configuration
 

@@ -10,7 +10,7 @@ Install Ordis and run your first Claude Code session in a multi-pane desktop int
 - **Node.js** LTS + [pnpm](https://pnpm.io/)
 
 Optional:
-- **limbo CLI** for task management features in the Dashboard
+- **limbo CLI** for task management features in the Dashboard (Ordis warns on startup if not found)
 
 ## Install
 
@@ -70,8 +70,12 @@ Click a project card to expand its task list. Click the **+** button to add a ta
 
 Switch to the Workspace by clicking the **Workspace** tab in the titlebar (or press **Cmd+2**). Ordis creates a terminal pane running Claude Code in your default working directory.
 
+If you previously had a session open, Ordis restores your pane layout automatically on launch.
+
 From there you can:
 - **Split panes** to run multiple Claude sessions side by side
+- **Zoom a pane** with **Cmd+Shift+Enter** to temporarily maximize it
+- **Open the command palette** with **Cmd+K** to quickly find any action
 - **Change the working directory** of any pane via the folder button in the pane toolbar
 - **Open the task sidebar** with **Cmd+B** for quick task reference while working
 

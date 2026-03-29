@@ -38,7 +38,12 @@ ordis/
 
 - Embedded terminal running Claude Code via PTY
 - Multi-pane support — run multiple Claude sessions side by side
+- Pane zoom — temporarily maximize any pane with Cmd+Shift+Enter
+- Command palette — Cmd+K fuzzy launcher for all actions
+- Session persistence — layout and pane state restored on launch
+- Toast notifications — error, warning, and info feedback
 - Per-pane working directory with folder picker
+- Graceful degradation — warns about missing limbo CLI, WebGL, or config errors
 - Dark theme
 
 ## License

@@ -6,7 +6,7 @@ Ordis is a Tauri 2 desktop application that embeds Claude Code inside PTY-backed
 
 ```
 ordis/
-├── Cargo.toml              # Workspace root (edition 2024, v0.1.0)
+├── Cargo.toml              # Workspace root (edition 2024, v0.2.0)
 ├── app/
 │   ├── package.json        # SolidJS + xterm.js + tauri-pty
 │   ├── vite.config.ts      # Vite with vite-plugin-solid
@@ -15,14 +15,18 @@ ordis/
 │   │   ├── App.tsx         # Root component, view routing, keyboard shortcuts
 │   │   ├── App.css         # All styles (single file)
 │   │   ├── lib/
-│   │   │   ├── store.ts    # Pane state, layout tree, split/close operations
-│   │   │   └── tasks.ts    # Project/task state, limbo integration, mutations
+│   │   │   ├── store.ts    # Pane state, layout tree, zoom, session persistence
+│   │   │   ├── tasks.ts    # Project/task state, limbo integration, mutations
+│   │   │   ├── toast.ts    # Toast notification state and actions
+│   │   │   └── commands.ts # Command palette registry
 │   │   └── components/
-│   │       ├── Dashboard.tsx    # Project grid, task CRUD, filtering
-│   │       ├── TerminalPane.tsx # xterm.js + PTY lifecycle per pane
-│   │       ├── PaneBar.tsx      # Tab bar for workspace panes
-│   │       ├── SplitDivider.tsx # Draggable split resize handles
-│   │       └── TaskSidebar.tsx  # Collapsible task list in workspace view
+│   │       ├── Dashboard.tsx      # Project grid, task CRUD, filtering
+│   │       ├── TerminalPane.tsx   # xterm.js + PTY lifecycle per pane
+│   │       ├── PaneBar.tsx        # Tab bar with zoom indicator
+│   │       ├── SplitDivider.tsx   # Draggable split resize handles
+│   │       ├── TaskSidebar.tsx    # Collapsible task list in workspace view
+│   │       ├── Toast.tsx          # Toast notification container
+│   │       └── CommandPalette.tsx # Cmd+K fuzzy-search command launcher
 │   └── src-tauri/          # Backend (Rust)
 │       ├── Cargo.toml      # Crate: ordis (staticlib + cdylib + rlib)
 │       ├── tauri.conf.json # App config, CSP, window defaults
@@ -63,6 +67,9 @@ These are the IPC commands exposed to the frontend via `tauri::generate_handler!
 | `edit_task` | `project_path, task_id, name?, description?, action?, verify?, result?` | `Vec<Task>` | Run `limbo edit`, return refreshed task list |
 | `add_task_note` | `project_path, task_id, message` | `Vec<Task>` | Run `limbo note`, return refreshed task list |
 | `delete_task` | `project_path, task_id` | `Vec<Task>` | Run `limbo delete`, return refreshed task list |
+| `check_startup` | -- | `StartupChecks` | Check limbo availability and validate config.toml |
+| `save_session` | `data: String` | `()` | Write session JSON to `~/.ordis/session.json` |
+| `load_session` | -- | `Option<String>` | Read session JSON from `~/.ordis/session.json` |
 
 All mutation commands follow a pattern: run the limbo CLI as a subprocess, then call `fetch_tasks_for_project()` to return the full refreshed task list. The frontend replaces its entire task array for that project on each mutation response.
 
@@ -115,7 +122,8 @@ type LayoutNode =
 
 Key design decisions:
 - **Flat DOM positioning**: Panes are not nested in the DOM. `computePositions()` walks the tree and produces `{x, y, w, h}` rects (0-1 normalized), applied as percentage CSS.
-- **Dividers are also flat**: `computeDividers()` produces position data for draggable resize handles overlaid on the terminal container.
+- **Zoom override**: `computeEffectivePositions()` wraps `computePositions()`. When a pane is zoomed, the zoomed pane gets `{0,0,1,1}` and all others get `{0,0,0,0}` (hidden via CSS visibility).
+- **Dividers are also flat**: `computeDividers()` produces position data for draggable resize handles overlaid on the terminal container. Dividers are hidden when a pane is zoomed.
 - **Split ratio clamping**: `updateSplitRatio()` clamps to [0.15, 0.85] to prevent invisible panes.
 
 ### Pane State (store.ts)
@@ -129,12 +137,12 @@ interface PaneState {
 }
 ```
 
-Stored in a SolidJS reactive store (`Record<string, PaneState>`). Operations: `createPane`, `splitPane`, `closePane`, `setPaneCwd`.
+Stored in a SolidJS reactive store (`Record<string, PaneState>`). Operations: `createPane`, `splitPane`, `closePane`, `setPaneCwd`, `toggleZoom`, `saveSession`, `restoreSession`.
 
 ### Terminal Lifecycle (TerminalPane.tsx)
 
 Each `TerminalPane` on mount:
-1. Creates an xterm.js `Terminal` with WebGL addon (falls back to canvas/DOM renderer on failure)
+1. Creates an xterm.js `Terminal` with WebGL addon (falls back to canvas/DOM renderer on failure, shows a warning toast)
 2. Spawns a PTY via `tauri-pty`: `/bin/zsh -l -c "claude --dangerously-skip-permissions [--agent X] [prompt]"`
 3. Connects bidirectional data: PTY output to terminal display, terminal input to PTY
 4. Attaches a `ResizeObserver` + `FitAddon` for auto-sizing on container resize
@@ -146,7 +154,7 @@ Terminal theme uses a dark palette (`#1a1a2e` background) with 10,000 lines of s
 
 The task module manages:
 - **Project discovery**: `loadProjects()` calls `list_projects`, then eagerly loads tasks for all limbo-enabled projects
-- **Task CRUD**: `addTask`, `editTask`, `deleteTask`, `updateTaskStatus`, `addTaskNote` -- all invoke Tauri commands that shell out to limbo CLI
+- **Task CRUD**: `addTask`, `editTask`, `deleteTask`, `updateTaskStatus`, `addTaskNote` -- all invoke Tauri commands that shell out to limbo CLI. All mutations are wrapped in try/catch with toast error reporting.
 - **Filtering**: `statusFilter` (all/todo/in-progress/done) and `searchFilter` (text search across name, id, action, owner)
 - **Filtered tree traversal**: `getFilteredRootTasks` / `getFilteredChildTasks` walk ancestors upward so matching child tasks always have their parent chain visible
 - **Live updates**: `setupTaskListener()` subscribes to `tasks-changed` events from the backend watcher thread

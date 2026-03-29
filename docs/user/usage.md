@@ -51,6 +51,10 @@ Filtering is hierarchical: when a child task matches, its entire ancestor chain 
 
 The Workspace is a multi-pane terminal environment. Each pane runs an independent Claude Code session.
 
+### Session Persistence
+
+Ordis saves your pane layout and working directories to `~/.ordis/session.json` when the window closes. On next launch, the previous layout is automatically restored. If a saved session exists, Ordis opens directly to the Workspace view.
+
 ### Pane Management
 
 **Creating panes:**
@@ -66,6 +70,11 @@ The Workspace is a multi-pane terminal environment. Each pane runs an independen
 - Click on a pane to focus it
 - Click a tab in the tab bar
 - Use **Cmd+3** through **Cmd+9** to jump to panes by position
+
+**Zooming a pane:**
+- Press **Cmd+Shift+Enter** to temporarily maximize the focused pane to fill the entire workspace
+- A **ZOOMED** indicator appears in the tab bar while zoomed
+- Press **Cmd+Shift+Enter** again (or click the indicator) to restore the original split layout
 
 ### Pane Toolbar
 
@@ -84,17 +93,47 @@ Press **Cmd+B** to toggle the task sidebar in the Workspace view. It shows a com
 
 The sidebar is independent of the Dashboard -- it provides lightweight task awareness while working in terminals.
 
+## Command Palette
+
+Press **Cmd+K** to open the command palette. It provides fuzzy search across all available actions:
+
+- Split Pane Vertical / Horizontal
+- Close Current Pane
+- Toggle Pane Zoom
+- Switch to Dashboard / Workspace
+- Toggle Task Sidebar
+- New Terminal Session
+
+Type to filter, use arrow keys to navigate, and press Enter to execute. Press Escape to dismiss.
+
+## Notifications
+
+Ordis displays toast notifications for errors, warnings, and informational messages. Toasts appear in the bottom-right corner:
+
+- **Error** (red) -- persists until manually dismissed (click the x)
+- **Warning** (amber) -- auto-dismisses after 5 seconds
+- **Info** (blue) -- auto-dismisses after 3 seconds
+
+Common notifications:
+- Task operation failures (add, edit, delete, status change)
+- PTY spawn failures
+- WebGL renderer unavailable (falls back to slower canvas renderer)
+- Missing limbo CLI (task features unavailable)
+- Config parse errors on startup
+
 ## Keyboard Shortcuts
 
 All shortcuts use the **Cmd** key (macOS):
 
 | Shortcut | Action | Available in |
 |----------|--------|--------------|
+| **Cmd+K** | Open command palette | Anywhere |
 | **Cmd+1** | Switch to Dashboard | Anywhere |
 | **Cmd+2** | Switch to Workspace | Anywhere |
 | **Cmd+B** | Toggle task sidebar | Anywhere |
 | **Cmd+D** | Split pane vertically | Workspace |
 | **Cmd+Shift+D** | Split pane horizontally | Workspace |
+| **Cmd+Shift+Enter** | Toggle pane zoom | Workspace |
 | **Cmd+W** | Close active pane | Workspace (only if multiple panes) |
 | **Cmd+3** to **Cmd+9** | Focus pane by index | Workspace |
 
