@@ -184,6 +184,11 @@ export function updateSplitRatio(splitId: string, ratio: number) {
   setLayout((prev) => (prev ? setRatioById(prev, splitId, clamped) : prev));
 }
 
+export function swapPanes(paneIdA: string, paneIdB: string) {
+  if (paneIdA === paneIdB) return;
+  setLayout((prev) => (prev ? swapLeaves(prev, paneIdA, paneIdB) : prev));
+}
+
 // --- Session Persistence ---
 
 interface SessionData {
@@ -242,6 +247,64 @@ export async function restoreSession(): Promise<boolean> {
   }
 }
 
+// --- Workspaces ---
+
+interface WorkspaceData {
+  layout: LayoutNode | null;
+  panes: Record<string, { cwd: string; agent?: string }>;
+}
+
+function captureWorkspace(): WorkspaceData {
+  const currentLayout = layout();
+  const leafIds = getLeafPaneIds(currentLayout);
+  const paneData: Record<string, { cwd: string; agent?: string }> = {};
+  for (const id of leafIds) {
+    const p = panes[id];
+    if (p) paneData[id] = { cwd: p.cwd, agent: p.agent };
+  }
+  return { layout: currentLayout, panes: paneData };
+}
+
+export async function saveWorkspace(name: string): Promise<void> {
+  const data = captureWorkspace();
+  await invoke("save_workspace", { name, data: JSON.stringify(data) });
+}
+
+export async function loadWorkspace(name: string): Promise<boolean> {
+  const raw = await invoke<string | null>("load_workspace", { name });
+  if (!raw) return false;
+  const data: WorkspaceData = JSON.parse(raw);
+  if (!data.layout) return false;
+
+  // Close all existing panes
+  const currentIds = getLeafPaneIds();
+  for (const id of currentIds) {
+    setPanes(produce((p) => { delete p[id]; }));
+  }
+
+  // Load workspace panes
+  const leafIds = getLeafPaneIds(data.layout);
+  if (leafIds.length === 0) return false;
+
+  for (const id of leafIds) {
+    const paneInfo = data.panes[id];
+    setPanes(id, { id, cwd: paneInfo?.cwd || "", agent: paneInfo?.agent });
+  }
+
+  setLayout(data.layout);
+  setZoomedPaneId(null);
+  setActivePaneId(leafIds[0]);
+  return true;
+}
+
+export async function listWorkspaces(): Promise<string[]> {
+  return invoke<string[]>("list_workspaces");
+}
+
+export async function deleteWorkspace(name: string): Promise<void> {
+  await invoke("delete_workspace", { name });
+}
+
 // --- Helpers ---
 
 function replaceLeaf(node: LayoutNode, paneId: string, replacement: LayoutNode): LayoutNode {
@@ -270,5 +333,18 @@ function setRatioById(node: LayoutNode, splitId: string, ratio: number): LayoutN
     ...node,
     first: setRatioById(node.first, splitId, ratio),
     second: setRatioById(node.second, splitId, ratio),
+  };
+}
+
+function swapLeaves(node: LayoutNode, idA: string, idB: string): LayoutNode {
+  if (node.type === "leaf") {
+    if (node.paneId === idA) return { type: "leaf", paneId: idB };
+    if (node.paneId === idB) return { type: "leaf", paneId: idA };
+    return node;
+  }
+  return {
+    ...node,
+    first: swapLeaves(node.first, idA, idB),
+    second: swapLeaves(node.second, idA, idB),
   };
 }

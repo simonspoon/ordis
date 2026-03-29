@@ -99,6 +99,16 @@ body {
   background: rgba(255, 255, 255, 0.03);
 }
 
+/* Drag-and-drop tab indicators */
+.pane-tab-drop-target {
+  border-bottom-color: var(--accent) !important;
+  background: rgba(124, 92, 191, 0.15) !important;
+}
+
+.pane-tab-dragging {
+  opacity: 0.4;
+}
+
 .pane-tab-close {
   font-size: 11px;
   color: var(--text-muted);
@@ -185,6 +195,157 @@ body {
 .pane-cwd:hover {
   background: var(--border);
   color: var(--text-secondary);
+}
+
+/* Git info in pane toolbar */
+.pane-git-info {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.pane-git-branch {
+  color: #c586c0;
+}
+
+.pane-git-dirty {
+  color: #e0a84e;
+  font-weight: 600;
+}
+
+.pane-git-ahead {
+  color: #4ec9b0;
+  font-size: 10px;
+}
+
+.pane-git-behind {
+  color: #e55555;
+  font-size: 10px;
+}
+
+/* Agent selector in pane toolbar */
+.pane-agent-selector {
+  position: relative;
+}
+
+.pane-agent-btn {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pane-agent-btn:hover {
+  color: var(--text-secondary);
+  border-color: var(--accent);
+}
+
+.pane-agent-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 2px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  min-width: 180px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.pane-agent-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pane-agent-option:hover {
+  background: rgba(124, 92, 191, 0.15);
+  color: var(--text-primary);
+}
+.pane-agent-option-active {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.pane-agent-plugin {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+/* Terminal search bar */
+.pane-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.pane-search-input {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 3px;
+  outline: none;
+  min-width: 0;
+}
+.pane-search-input:focus {
+  border-color: var(--accent);
+}
+.pane-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.pane-search-nav {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 10px;
+  cursor: pointer;
+  padding: 3px 6px;
+  border-radius: 3px;
+  line-height: 1;
+}
+.pane-search-nav:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.pane-search-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 1px 4px;
+  line-height: 1;
+}
+.pane-search-close:hover {
+  color: var(--text-primary);
 }
 
 .terminal-pane {
@@ -936,6 +1097,69 @@ body {
 .task-note-input:focus {
   border-color: var(--accent);
   background: rgba(255, 255, 255, 0.05);
+}
+
+/* ===== Status Bar ===== */
+
+.status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  height: 22px;
+  min-height: 22px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-muted);
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.status-bar-left,
+.status-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.status-pane-count {
+  color: var(--text-muted);
+}
+
+.status-project {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.status-git {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-mono);
+}
+
+.status-git-branch {
+  color: #c586c0;
+}
+
+.status-git-dirty {
+  color: #e0a84e;
+  font-weight: 600;
+}
+
+.status-git-ahead {
+  color: #4ec9b0;
+}
+
+.status-git-behind {
+  color: #e55555;
 }
 
 /* ===== Toast Notifications ===== */

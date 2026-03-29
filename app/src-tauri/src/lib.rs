@@ -15,12 +15,22 @@ struct Config {
     default_cwd: Option<String>,
     #[serde(default)]
     projects: Vec<ProjectConfig>,
+    #[serde(default)]
+    profiles: Vec<ProfileConfig>,
 }
 
 #[derive(Deserialize)]
 struct ProjectConfig {
     name: String,
     path: String,
+}
+
+#[derive(Deserialize, Clone)]
+struct ProfileConfig {
+    name: String,
+    cwd: Option<String>,
+    agent: Option<String>,
+    prompt: Option<String>,
 }
 
 fn load_config() -> Config {
@@ -61,6 +71,15 @@ struct Project {
     name: String,
     path: String,
     has_limbo: bool,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct GitInfo {
+    branch: String,
+    dirty: bool,
+    ahead: u32,
+    behind: u32,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -289,6 +308,152 @@ fn delete_task(project_path: String, task_id: String) -> Result<Vec<Task>, Strin
     run_limbo_mutation(&project_path, &args)
 }
 
+// --- Git ---
+
+#[tauri::command]
+fn get_git_info(path: String) -> Result<Option<GitInfo>, String> {
+    let dir = PathBuf::from(&path);
+    if !dir.is_dir() {
+        return Ok(None);
+    }
+
+    // Check if path is inside a git repo
+    let branch_output = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(&dir)
+        .output();
+
+    let branch = match branch_output {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).trim().to_string(),
+        _ => return Ok(None),
+    };
+
+    // Dirty status
+    let dirty = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(&dir)
+        .output()
+        .map(|o| !o.stdout.is_empty())
+        .unwrap_or(false);
+
+    // Ahead/behind
+    let (ahead, behind) = Command::new("git")
+        .args(["rev-list", "--left-right", "--count", "HEAD...@{upstream}"])
+        .current_dir(&dir)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| {
+            let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            let parts: Vec<&str> = s.split('\t').collect();
+            if parts.len() == 2 {
+                Some((
+                    parts[0].parse::<u32>().unwrap_or(0),
+                    parts[1].parse::<u32>().unwrap_or(0),
+                ))
+            } else {
+                None
+            }
+        })
+        .unwrap_or((0, 0));
+
+    Ok(Some(GitInfo {
+        branch,
+        dirty,
+        ahead,
+        behind,
+    }))
+}
+
+// --- Profiles ---
+
+#[derive(Serialize, Clone)]
+struct Profile {
+    name: String,
+    cwd: Option<String>,
+    agent: Option<String>,
+    prompt: Option<String>,
+}
+
+#[tauri::command]
+fn list_profiles() -> Vec<Profile> {
+    let config = load_config();
+    config
+        .profiles
+        .into_iter()
+        .map(|p| Profile {
+            name: p.name,
+            cwd: p
+                .cwd
+                .map(|c| expand_tilde(&c).to_string_lossy().to_string()),
+            agent: p.agent,
+            prompt: p.prompt,
+        })
+        .collect()
+}
+
+// --- Agents ---
+
+#[tauri::command]
+fn list_agents() -> Vec<String> {
+    let mut agents = Vec::new();
+
+    // Scan ~/.claude/agents/ for .md files
+    if let Some(home) = dirs::home_dir() {
+        let agents_dir = home.join(".claude").join("agents");
+        if let Ok(entries) = fs::read_dir(&agents_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().is_some_and(|e| e == "md")
+                    && let Some(stem) = path.file_stem()
+                {
+                    agents.push(stem.to_string_lossy().to_string());
+                }
+            }
+        }
+
+        // Also scan plugin agents (swe-team latest version)
+        let plugins_dir = home.join(".claude").join("plugins").join("cache");
+        if let Ok(orgs) = fs::read_dir(&plugins_dir) {
+            for org in orgs.flatten() {
+                if let Ok(plugins) = fs::read_dir(org.path()) {
+                    for plugin in plugins.flatten() {
+                        // Find highest version directory
+                        if let Ok(versions) = fs::read_dir(plugin.path()) {
+                            let mut version_dirs: Vec<_> =
+                                versions.flatten().filter(|e| e.path().is_dir()).collect();
+                            version_dirs.sort_by_key(|b| std::cmp::Reverse(b.file_name()));
+                            if let Some(latest) = version_dirs.first() {
+                                let agents_path = latest.path().join("agents");
+                                if let Ok(agent_files) = fs::read_dir(&agents_path) {
+                                    let plugin_name = plugin.file_name();
+                                    let prefix = plugin_name.to_string_lossy();
+                                    for af in agent_files.flatten() {
+                                        let p = af.path();
+                                        if p.extension().is_some_and(|e| e == "md")
+                                            && let Some(stem) = p.file_stem()
+                                        {
+                                            agents.push(format!(
+                                                "{}:{}",
+                                                prefix,
+                                                stem.to_string_lossy()
+                                            ));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    agents.sort();
+    agents.dedup();
+    agents
+}
+
 // --- Startup Checks ---
 
 #[derive(Serialize, Clone)]
@@ -345,6 +510,62 @@ fn load_session() -> Result<Option<String>, String> {
     }
     let contents = fs::read_to_string(&path).map_err(|e| format!("Failed to read session: {e}"))?;
     Ok(Some(contents))
+}
+
+// --- Workspaces ---
+
+fn workspaces_dir() -> Option<PathBuf> {
+    dirs::home_dir().map(|h| h.join(".ordis").join("workspaces"))
+}
+
+#[tauri::command]
+fn list_workspaces() -> Result<Vec<String>, String> {
+    let dir = workspaces_dir().ok_or("Could not resolve home directory")?;
+    if !dir.exists() {
+        return Ok(vec![]);
+    }
+    let mut names = Vec::new();
+    let entries = fs::read_dir(&dir).map_err(|e| format!("Failed to read workspaces dir: {e}"))?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().is_some_and(|e| e == "json")
+            && let Some(stem) = path.file_stem()
+        {
+            names.push(stem.to_string_lossy().to_string());
+        }
+    }
+    names.sort();
+    Ok(names)
+}
+
+#[tauri::command]
+fn save_workspace(name: String, data: String) -> Result<(), String> {
+    let dir = workspaces_dir().ok_or("Could not resolve home directory")?;
+    fs::create_dir_all(&dir).map_err(|e| format!("Failed to create workspaces dir: {e}"))?;
+    let path = dir.join(format!("{name}.json"));
+    fs::write(&path, &data).map_err(|e| format!("Failed to save workspace: {e}"))
+}
+
+#[tauri::command]
+fn load_workspace(name: String) -> Result<Option<String>, String> {
+    let dir = workspaces_dir().ok_or("Could not resolve home directory")?;
+    let path = dir.join(format!("{name}.json"));
+    if !path.exists() {
+        return Ok(None);
+    }
+    let contents =
+        fs::read_to_string(&path).map_err(|e| format!("Failed to read workspace: {e}"))?;
+    Ok(Some(contents))
+}
+
+#[tauri::command]
+fn delete_workspace(name: String) -> Result<(), String> {
+    let dir = workspaces_dir().ok_or("Could not resolve home directory")?;
+    let path = dir.join(format!("{name}.json"));
+    if path.exists() {
+        fs::remove_file(&path).map_err(|e| format!("Failed to delete workspace: {e}"))?;
+    }
+    Ok(())
 }
 
 // --- Watcher ---
@@ -419,6 +640,13 @@ pub fn run() {
             save_session,
             load_session,
             check_startup,
+            get_git_info,
+            list_agents,
+            list_profiles,
+            list_workspaces,
+            save_workspace,
+            load_workspace,
+            delete_workspace,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

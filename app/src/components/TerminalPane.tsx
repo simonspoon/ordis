@@ -1,12 +1,21 @@
-import { onMount, onCleanup } from "solid-js";
+import { onMount, onCleanup, createSignal, Show } from "solid-js";
 import { Terminal } from "@xterm/xterm";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { FitAddon } from "@xterm/addon-fit";
+import { SearchAddon } from "@xterm/addon-search";
 import { spawn } from "tauri-pty";
 import { open } from "@tauri-apps/plugin-dialog";
-import { panes, setPaneCwd, closePane, activePaneId, setActivePaneId } from "../lib/store";
+import { invoke } from "@tauri-apps/api/core";
+import { panes, setPaneCwd, closePane, createPane, activePaneId, setActivePaneId } from "../lib/store";
 import { toast } from "../lib/toast";
 import "@xterm/xterm/css/xterm.css";
+
+interface GitInfo {
+  branch: string;
+  dirty: boolean;
+  ahead: number;
+  behind: number;
+}
 
 interface Props {
   paneId: string;
@@ -14,12 +23,91 @@ interface Props {
 
 export default function TerminalPane(props: Props) {
   let containerRef!: HTMLDivElement;
+  let searchInputRef!: HTMLInputElement;
   let term: Terminal | null = null;
   let fitAddon: FitAddon | null = null;
+  let searchAddon: SearchAddon | null = null;
   let pty: ReturnType<typeof spawn> | null = null;
   let resizeObserver: ResizeObserver | null = null;
 
+  const [gitInfo, setGitInfo] = createSignal<GitInfo | null>(null);
+  const [searchOpen, setSearchOpen] = createSignal(false);
+  const [searchQuery, setSearchQuery] = createSignal("");
+  const [agentDropdownOpen, setAgentDropdownOpen] = createSignal(false);
+  const [availableAgents, setAvailableAgents] = createSignal<string[]>([]);
+
   const paneCwd = () => panes[props.paneId]?.cwd || "";
+
+  const fetchGitInfo = async () => {
+    const cwd = paneCwd();
+    if (!cwd) { setGitInfo(null); return; }
+    try {
+      const info = await invoke<GitInfo | null>("get_git_info", { path: cwd });
+      setGitInfo(info);
+    } catch {
+      setGitInfo(null);
+    }
+  };
+
+  const currentAgent = () => panes[props.paneId]?.agent || "default";
+
+  const agentLabel = (agent: string) => {
+    if (agent === "default" || !agent) return "default";
+    // Strip plugin prefix for display (e.g., "swe-team:project-manager" -> "project-manager")
+    const parts = agent.split(":");
+    return parts[parts.length - 1];
+  };
+
+  const toggleAgentDropdown = async () => {
+    if (!agentDropdownOpen()) {
+      try {
+        const agents = await invoke<string[]>("list_agents");
+        setAvailableAgents(agents);
+      } catch {
+        setAvailableAgents([]);
+      }
+    }
+    setAgentDropdownOpen((v) => !v);
+  };
+
+  const selectAgent = (agent: string) => {
+    setAgentDropdownOpen(false);
+    const newAgent = agent === "default" ? undefined : agent;
+    const currentPaneAgent = panes[props.paneId]?.agent;
+    if (newAgent === currentPaneAgent) return;
+    // Changing agent requires restarting — close old pane, create new one
+    const cwd = paneCwd();
+    closePane(props.paneId);
+    setTimeout(() => createPane(cwd, { agent: newAgent }), 50);
+  };
+
+  const openSearch = () => {
+    setSearchOpen(true);
+    requestAnimationFrame(() => {
+      if (searchInputRef) {
+        searchInputRef.focus();
+        searchInputRef.select();
+      }
+    });
+  };
+
+  const closeSearch = () => {
+    setSearchOpen(false);
+    setSearchQuery("");
+    searchAddon?.clearDecorations();
+  };
+
+  const doSearch = (query: string, direction: "next" | "prev" = "next") => {
+    if (!searchAddon || !query) {
+      searchAddon?.clearDecorations();
+      return;
+    }
+    if (direction === "next") {
+      searchAddon.findNext(query, { decorations: { matchOverviewRuler: "#7c5cbf", activeMatchColorOverviewRuler: "#e0a84e" } });
+    } else {
+      searchAddon.findPrevious(query, { decorations: { matchOverviewRuler: "#7c5cbf", activeMatchColorOverviewRuler: "#e0a84e" } });
+    }
+  };
 
   const changeFolder = async () => {
     const selected = await open({
@@ -69,7 +157,9 @@ export default function TerminalPane(props: Props) {
     });
 
     fitAddon = new FitAddon();
+    searchAddon = new SearchAddon();
     term.loadAddon(fitAddon);
+    term.loadAddon(searchAddon);
     term.open(containerRef);
 
     try {
@@ -129,6 +219,34 @@ export default function TerminalPane(props: Props) {
       if (fitAddon) fitAddon.fit();
     });
     resizeObserver.observe(containerRef);
+
+    // Poll git info every 5 seconds
+    fetchGitInfo();
+    const gitPollInterval = setInterval(fetchGitInfo, 5000);
+    onCleanup(() => clearInterval(gitPollInterval));
+
+    // Cmd+F search handler (scoped to this pane when focused)
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.metaKey && e.key === "f" && activePaneId() === props.paneId) {
+        e.preventDefault();
+        e.stopPropagation();
+        openSearch();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    onCleanup(() => window.removeEventListener("keydown", onKeyDown, true));
+
+    // Close agent dropdown on outside click
+    const onDocClick = (e: MouseEvent) => {
+      if (agentDropdownOpen()) {
+        const target = e.target as HTMLElement;
+        if (!target.closest(".pane-agent-selector")) {
+          setAgentDropdownOpen(false);
+        }
+      }
+    };
+    document.addEventListener("click", onDocClick);
+    onCleanup(() => document.removeEventListener("click", onDocClick));
   });
 
   onCleanup(() => {
@@ -148,7 +266,72 @@ export default function TerminalPane(props: Props) {
         <button class="pane-cwd" onClick={changeFolder} title={paneCwd()}>
           {paneCwd() ? paneCwd().replace(/^\/Users\/[^/]+/, "~") : "..."}
         </button>
+        {gitInfo() && (
+          <span class="pane-git-info">
+            <span class="pane-git-branch">{gitInfo()!.branch}</span>
+            {gitInfo()!.dirty && <span class="pane-git-dirty">*</span>}
+            {gitInfo()!.ahead > 0 && <span class="pane-git-ahead">+{gitInfo()!.ahead}</span>}
+            {gitInfo()!.behind > 0 && <span class="pane-git-behind">-{gitInfo()!.behind}</span>}
+          </span>
+        )}
+        <div class="pane-agent-selector" style={{ "margin-left": "auto" }}>
+          <button class="pane-agent-btn" onClick={toggleAgentDropdown} title="Change agent">
+            {agentLabel(currentAgent())}
+          </button>
+          <Show when={agentDropdownOpen()}>
+            <div class="pane-agent-dropdown">
+              <div
+                class={`pane-agent-option ${currentAgent() === "default" ? "pane-agent-option-active" : ""}`}
+                onClick={() => selectAgent("default")}
+              >
+                default
+              </div>
+              {availableAgents().map((agent) => (
+                <div
+                  class={`pane-agent-option ${currentAgent() === agent ? "pane-agent-option-active" : ""}`}
+                  onClick={() => selectAgent(agent)}
+                >
+                  {agentLabel(agent)}
+                  <Show when={agent.includes(":")}>
+                    <span class="pane-agent-plugin">{agent.split(":")[0]}</span>
+                  </Show>
+                </div>
+              ))}
+            </div>
+          </Show>
+        </div>
       </div>
+      <Show when={searchOpen()}>
+        <div class="pane-search-bar">
+          <input
+            ref={searchInputRef}
+            class="pane-search-input"
+            type="text"
+            placeholder="Search..."
+            value={searchQuery()}
+            onInput={(e) => {
+              const q = e.currentTarget.value;
+              setSearchQuery(q);
+              doSearch(q);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && e.shiftKey) {
+                e.preventDefault();
+                doSearch(searchQuery(), "prev");
+              } else if (e.key === "Enter") {
+                e.preventDefault();
+                doSearch(searchQuery(), "next");
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                closeSearch();
+              }
+            }}
+          />
+          <button class="pane-search-nav" onClick={() => doSearch(searchQuery(), "prev")} title="Previous (Shift+Enter)">&#x25B2;</button>
+          <button class="pane-search-nav" onClick={() => doSearch(searchQuery(), "next")} title="Next (Enter)">&#x25BC;</button>
+          <button class="pane-search-close" onClick={closeSearch}>&times;</button>
+        </div>
+      </Show>
       <div ref={containerRef} class="terminal-pane" />
     </div>
   );

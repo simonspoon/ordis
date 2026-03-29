@@ -1,12 +1,14 @@
-import { For, Show } from "solid-js";
+import { For, Show, createSignal } from "solid-js";
 import {
   panes, activePaneId, setActivePaneId,
   closePane, splitPane, getLeafPaneIds,
-  isZoomed, toggleZoom,
+  isZoomed, toggleZoom, swapPanes,
 } from "../lib/store";
 
 export default function PaneBar() {
   const leafIds = () => getLeafPaneIds();
+  const [dragOverId, setDragOverId] = createSignal<string | null>(null);
+  const [dragSourceId, setDragSourceId] = createSignal<string | null>(null);
 
   const label = (id: string) => {
     const cwd = panes[id]?.cwd;
@@ -15,16 +17,57 @@ export default function PaneBar() {
     return parts[parts.length - 1] || "Terminal";
   };
 
+  const onDragStart = (id: string, e: DragEvent) => {
+    setDragSourceId(id);
+    e.dataTransfer!.effectAllowed = "move";
+    e.dataTransfer!.setData("text/plain", id);
+  };
+
+  const onDragOver = (id: string, e: DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer!.dropEffect = "move";
+    if (id !== dragSourceId()) {
+      setDragOverId(id);
+    }
+  };
+
+  const onDragLeave = () => {
+    setDragOverId(null);
+  };
+
+  const onDrop = (targetId: string, e: DragEvent) => {
+    e.preventDefault();
+    const sourceId = e.dataTransfer!.getData("text/plain");
+    setDragOverId(null);
+    setDragSourceId(null);
+    if (sourceId && sourceId !== targetId) {
+      swapPanes(sourceId, targetId);
+    }
+  };
+
+  const onDragEnd = () => {
+    setDragOverId(null);
+    setDragSourceId(null);
+  };
+
   return (
     <div class="pane-bar">
       <div class="pane-tabs">
         <For each={leafIds()}>
           {(id) => {
             const isActive = () => activePaneId() === id;
+            const isDragOver = () => dragOverId() === id;
+            const isDragSource = () => dragSourceId() === id;
             return (
               <button
-                class={`pane-tab ${isActive() ? "pane-tab-active" : ""}`}
+                class={`pane-tab ${isActive() ? "pane-tab-active" : ""} ${isDragOver() ? "pane-tab-drop-target" : ""} ${isDragSource() ? "pane-tab-dragging" : ""}`}
                 onClick={() => setActivePaneId(id)}
+                draggable={true}
+                onDragStart={(e) => onDragStart(id, e)}
+                onDragOver={(e) => onDragOver(id, e)}
+                onDragLeave={onDragLeave}
+                onDrop={(e) => onDrop(id, e)}
+                onDragEnd={onDragEnd}
               >
                 <span class="pane-tab-label">{label(id)}</span>
                 <Show when={leafIds().length > 1}>

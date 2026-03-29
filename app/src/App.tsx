@@ -5,6 +5,7 @@ import {
   createPane, splitPane, closePane, toggleZoom, isZoomed,
   getLeafPaneIds, computeEffectivePositions, computeDividers,
   saveSession, restoreSession,
+  saveWorkspace, loadWorkspace, listWorkspaces,
 } from "./lib/store";
 import { viewMode, setViewMode } from "./lib/tasks";
 import { toast } from "./lib/toast";
@@ -16,6 +17,7 @@ import Dashboard from "./components/Dashboard";
 import TaskSidebar from "./components/TaskSidebar";
 import ToastContainer from "./components/Toast";
 import CommandPalette from "./components/CommandPalette";
+import StatusBar from "./components/StatusBar";
 import "./App.css";
 
 export default function App() {
@@ -77,6 +79,45 @@ export default function App() {
         setViewMode("workspace");
       },
     });
+
+    // Load profiles and register as commands
+    invoke<Array<{ name: string; cwd: string | null; agent: string | null; prompt: string | null }>>("list_profiles")
+      .then((profiles) => {
+        for (const profile of profiles) {
+          registerCommand({
+            id: `profile-${profile.name}`,
+            label: `Launch Profile: ${profile.name}`,
+            action: () => {
+              const cwd = profile.cwd || "";
+              createPane(cwd, {
+                agent: profile.agent || undefined,
+                prompt: profile.prompt || undefined,
+              });
+              setViewMode("workspace");
+            },
+          });
+        }
+      })
+      .catch(() => { /* Profiles are optional */ });
+
+    // Register workspace commands
+    registerCommand({
+      id: "save-workspace",
+      label: "Save Workspace As...",
+      action: async () => {
+        const name = window.prompt("Workspace name:");
+        if (!name?.trim()) return;
+        try {
+          await saveWorkspace(name.trim());
+          toast.info(`Workspace "${name.trim()}" saved`);
+          refreshWorkspaceCommands();
+        } catch (e) {
+          toast.error(`Failed to save workspace: ${e}`);
+        }
+      },
+    });
+
+    refreshWorkspaceCommands();
   });
 
   // Startup checks and session restore
@@ -179,6 +220,32 @@ export default function App() {
     setViewMode("workspace");
   };
 
+  const refreshWorkspaceCommands = () => {
+    listWorkspaces()
+      .then((names) => {
+        for (const name of names) {
+          registerCommand({
+            id: `workspace-load-${name}`,
+            label: `Load Workspace: ${name}`,
+            action: async () => {
+              try {
+                const loaded = await loadWorkspace(name);
+                if (loaded) {
+                  setViewMode("workspace");
+                  toast.info(`Workspace "${name}" loaded`);
+                } else {
+                  toast.error(`Workspace "${name}" is empty or invalid`);
+                }
+              } catch (e) {
+                toast.error(`Failed to load workspace: ${e}`);
+              }
+            },
+          });
+        }
+      })
+      .catch(() => { /* Workspaces are optional */ });
+  };
+
   const positions = createMemo(() => computeEffectivePositions(layout()));
   const dividers = createMemo(() => isZoomed() ? [] : computeDividers(layout()));
   const leafIds = createMemo(() => getLeafPaneIds());
@@ -263,6 +330,8 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      <StatusBar />
 
       <CommandPalette />
       <ToastContainer />
