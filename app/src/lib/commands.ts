@@ -13,22 +13,24 @@ export interface Command {
 
 export const [paletteOpen, setPaletteOpen] = createSignal(false);
 
-const registry: Command[] = [];
+const [commands, setCommands] = createSignal<Command[]>([]);
 
 // --- Actions ---
 
 export function registerCommand(cmd: Command) {
-  // Replace if same ID already exists
-  const idx = registry.findIndex((c) => c.id === cmd.id);
-  if (idx !== -1) {
-    registry[idx] = cmd;
-  } else {
-    registry.push(cmd);
-  }
+  setCommands((prev) => {
+    const idx = prev.findIndex((c) => c.id === cmd.id);
+    if (idx !== -1) {
+      const next = [...prev];
+      next[idx] = cmd;
+      return next;
+    }
+    return [...prev, cmd];
+  });
 }
 
 export function getCommands(): Command[] {
-  return [...registry];
+  return commands();
 }
 
 export function togglePalette() {
