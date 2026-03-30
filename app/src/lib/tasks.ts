@@ -29,6 +29,14 @@ export interface Task {
   updated?: string;
 }
 
+export interface TaskTemplate {
+  name: string;
+  description?: string;
+  action?: string;
+  verify?: string;
+  result?: string;
+}
+
 export interface ProjectState {
   project: Project;
   tasks: Task[];
@@ -37,16 +45,42 @@ export interface ProjectState {
 }
 
 export type ViewMode = "dashboard" | "workspace";
+export type DashboardView = "list" | "kanban" | "graph" | "timeline";
 export type StatusFilter = "all" | "todo" | "in-progress" | "done";
 
 // --- State ---
 
 export const [viewMode, setViewMode] = createSignal<ViewMode>("dashboard");
+export const [dashboardView, setDashboardView] = createSignal<DashboardView>("list");
 export const [projects, setProjects] = createStore<Record<string, ProjectState>>({});
 export const [projectsLoading, setProjectsLoading] = createSignal(false);
 export const [selectedTaskId, setSelectedTaskId] = createSignal<{ project: string; taskId: string } | null>(null);
 export const [statusFilter, setStatusFilter] = createSignal<StatusFilter>("all");
 export const [searchFilter, setSearchFilter] = createSignal("");
+export const [selectedTasks, setSelectedTasks] = createSignal<Set<string>>(new Set());
+export const [templates, setTemplates] = createSignal<TaskTemplate[]>([]);
+
+// --- Selection Helpers ---
+
+export function toggleTaskSelection(taskId: string) {
+  setSelectedTasks((prev) => {
+    const next = new Set(prev);
+    if (next.has(taskId)) {
+      next.delete(taskId);
+    } else {
+      next.add(taskId);
+    }
+    return next;
+  });
+}
+
+export function selectAllTasks(taskIds: string[]) {
+  setSelectedTasks(new Set(taskIds));
+}
+
+export function clearSelection() {
+  setSelectedTasks(new Set<string>());
+}
 
 // --- Derived ---
 
@@ -142,6 +176,16 @@ export function getFilteredChildTasks(projectName: string, parentId: string): Ta
 }
 
 // --- Actions ---
+
+export async function loadTemplates() {
+  try {
+    const list = await invoke<TaskTemplate[]>("list_templates");
+    setTemplates(list);
+  } catch {
+    // Templates are optional — config may not have any
+    setTemplates([]);
+  }
+}
 
 export async function loadProjects() {
   setProjectsLoading(true);
@@ -326,6 +370,42 @@ export async function deleteTask(
     }
   } catch (e) {
     toast.error(`Failed to delete task ${taskId}: ${e}`);
+  }
+}
+
+export async function blockTask(
+  projectName: string,
+  projectPath: string,
+  blockerId: string,
+  blockedId: string,
+) {
+  try {
+    const tasks = await invoke<Task[]>("block_task", {
+      projectPath,
+      blockerId,
+      blockedId,
+    });
+    setProjects(projectName, "tasks", tasks);
+  } catch (e) {
+    toast.error(`Failed to block task: ${e}`);
+  }
+}
+
+export async function unblockTask(
+  projectName: string,
+  projectPath: string,
+  blockerId: string,
+  blockedId: string,
+) {
+  try {
+    const tasks = await invoke<Task[]>("unblock_task", {
+      projectPath,
+      blockerId,
+      blockedId,
+    });
+    setProjects(projectName, "tasks", tasks);
+  } catch (e) {
+    toast.error(`Failed to unblock task: ${e}`);
   }
 }
 

@@ -34,6 +34,61 @@ Expand a project card to see its task tree. Tasks display as a hierarchical list
 
 **Adding tasks:** Click the **+** button on a project card header. Type a name and press Enter.
 
+### Dashboard Views
+
+The Dashboard supports four view modes, toggled via icons in the header:
+
+| View | Icon | Description |
+|------|------|-------------|
+| **List** (default) | List icon | Hierarchical task tree with parent-child nesting |
+| **Kanban** | Board icon | Three columns (Todo, In Progress, Done) with draggable task cards |
+| **Dependency Graph** | DAG icon | Visual directed graph of blocked-by relationships between tasks |
+| **Timeline** | Timeline icon | Horizontal timeline showing task duration bars from created to updated |
+
+View commands are also available in the command palette (Cmd+K).
+
+### Kanban Board
+
+The kanban view displays tasks as cards in three status columns. Drag a card between columns to change its status. Cards show task ID, name, and owner. Cards with a parent task display a small parent-ID badge. Tasks are grouped by project within each column.
+
+### Dependency Graph
+
+The dependency graph renders tasks with `blocked-by` relationships as a directed acyclic graph (DAG). Nodes are colored by status (gray=todo, purple=in-progress, green=done). The critical path (longest chain of incomplete tasks) is highlighted in amber.
+
+**Interactions:** Scroll to zoom, drag to pan, click a node to select the task. Use the "Fit" button to auto-zoom to show all nodes.
+
+### Task Timeline
+
+The timeline view shows horizontal bars representing each task's duration from creation to last update (or now if still active). Tasks are grouped by project. The left column shows task names; the right area is a scrollable SVG timeline. Bar colors match task status.
+
+**Interactions:** Hover a bar for a tooltip with dates and duration. Click to select. Mouse wheel scrolls horizontally; Cmd+wheel zooms. "Fit All" button auto-ranges to show all tasks.
+
+### Bulk Operations
+
+Select multiple tasks using the checkboxes on task rows (list view) or cards (kanban view). When tasks are selected, a bulk action bar appears at the bottom of the Dashboard with:
+
+| Action | Description |
+|--------|-------------|
+| **Set Status** (todo / in-progress / done) | Change status of all selected tasks |
+| **Delete** | Delete all selected tasks |
+| **Select All** | Select all visible tasks |
+| **Deselect All** | Clear selection |
+
+### Task Templates
+
+If task templates are configured in `~/.ordis/config.toml`, the add-task button (+) shows a template picker. Select a template to pre-fill all task fields (name, description, action, verify, result).
+
+Templates are defined in config.toml:
+
+```toml
+[[templates]]
+name = "Bug Fix"
+description = "Fix a reported bug"
+action = "Investigate root cause, implement fix, add regression test"
+verify = "Bug no longer reproduces, tests pass"
+result = "Root cause explanation and fix summary"
+```
+
 ### Filtering and Search
 
 The Dashboard header provides:
@@ -156,6 +211,7 @@ Press **Cmd+K** to open the command palette. It provides fuzzy search across all
 - Switch to Dashboard / Workspace
 - Toggle Task Sidebar
 - New Terminal Session
+- Switch to List View / Kanban View / Dependency Graph / Timeline
 - Save Workspace As...
 - Load Workspace: \<name> (for each saved workspace)
 - Delete Workspace: \<name>
@@ -164,6 +220,12 @@ Press **Cmd+K** to open the command palette. It provides fuzzy search across all
 Type to filter, use arrow keys to navigate, and press Enter to execute. Press Escape to dismiss.
 
 ## Notifications
+
+### Desktop Notifications
+
+Ordis sends native OS notifications when task statuses change externally (e.g., via `limbo` CLI or another agent). Notifications distinguish between "Task Completed" (status changed to done) and "Task Status Changed" (any other status transition). Notification permission is requested on first launch.
+
+### Toast Notifications
 
 Ordis displays toast notifications for errors, warnings, and informational messages. Toasts appear in the bottom-right corner:
 

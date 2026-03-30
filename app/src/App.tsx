@@ -7,7 +7,7 @@ import {
   saveSession, restoreSession,
   saveWorkspace, loadWorkspace, listWorkspaces,
 } from "./lib/store";
-import { viewMode, setViewMode } from "./lib/tasks";
+import { viewMode, setViewMode, setDashboardView } from "./lib/tasks";
 import { toast } from "./lib/toast";
 import { registerCommand, togglePalette, paletteOpen, closePalette } from "./lib/commands";
 import PaneBar from "./components/PaneBar";
@@ -36,6 +36,26 @@ export default function App() {
       label: "Switch to Workspace",
       shortcut: "Cmd+2",
       action: () => switchToWorkspace(),
+    });
+    registerCommand({
+      id: "view-kanban",
+      label: "Switch to Kanban View",
+      action: () => { setViewMode("dashboard"); setDashboardView("kanban"); },
+    });
+    registerCommand({
+      id: "view-list",
+      label: "Switch to List View",
+      action: () => { setViewMode("dashboard"); setDashboardView("list"); },
+    });
+    registerCommand({
+      id: "view-graph",
+      label: "Switch to Dependency Graph",
+      action: () => { setViewMode("dashboard"); setDashboardView("graph"); },
+    });
+    registerCommand({
+      id: "view-timeline",
+      label: "Switch to Timeline",
+      action: () => { setViewMode("dashboard"); setDashboardView("timeline"); },
     });
     registerCommand({
       id: "toggle-sidebar",
@@ -133,6 +153,21 @@ export default function App() {
       }
     } catch {
       // Startup checks are best-effort
+    }
+
+    // Request notification permission
+    try {
+      const { isPermissionGranted, requestPermission } = await import("@tauri-apps/plugin-notification");
+      let granted = await isPermissionGranted();
+      if (!granted) {
+        const perm = await requestPermission();
+        granted = perm === "granted";
+      }
+      if (!granted) {
+        toast.info("Desktop notifications are disabled — enable in system settings to get task alerts");
+      }
+    } catch {
+      // Notification plugin may not be available
     }
 
     // Restore previous session

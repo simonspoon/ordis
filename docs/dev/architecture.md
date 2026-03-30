@@ -20,7 +20,10 @@ ordis/
 │   │   │   ├── toast.ts    # Toast notification state and actions
 │   │   │   └── commands.ts # Command palette registry
 │   │   └── components/
-│   │       ├── Dashboard.tsx      # Project grid, task CRUD, filtering
+│   │       ├── Dashboard.tsx      # Project grid, task CRUD, filtering, view toggle
+│   │       ├── KanbanBoard.tsx    # Kanban board view (todo/in-progress/done columns)
+│   │       ├── DependencyGraph.tsx # DAG visualization of task blocked-by relationships
+│   │       ├── TaskTimeline.tsx   # Horizontal timeline view with duration bars
 │   │       ├── TerminalPane.tsx   # xterm.js + PTY lifecycle per pane
 │   │       ├── PaneBar.tsx        # Tab bar with zoom indicator, drag-and-drop reordering
 │   │       ├── StatusBar.tsx      # Bottom status bar (session count, project, git branch)
@@ -52,6 +55,7 @@ Ordis reads `~/.ordis/config.toml` at startup. The config has three top-level fi
 | `default_cwd` | `Option<String>` | Default working directory for new panes. Supports `~` expansion. Falls back to `$HOME`. |
 | `projects` | `Vec<{name, path}>` | Named project directories shown in the Dashboard. Each is checked for a `.limbo/` directory to determine task support. |
 | `profiles` | `Vec<{name, cwd?, agent?, prompt?}>` | Terminal profiles — reusable presets launchable from the command palette. |
+| `templates` | `Vec<{name, description, action, verify, result}>` | Task templates — presets for common task types (bug fix, feature, review). Shown in the add-task template picker. |
 
 ### Tauri Commands
 
@@ -69,6 +73,9 @@ These are the IPC commands exposed to the frontend via `tauri::generate_handler!
 | `edit_task` | `project_path, task_id, name?, description?, action?, verify?, result?` | `Vec<Task>` | Run `limbo edit`, return refreshed task list |
 | `add_task_note` | `project_path, task_id, message` | `Vec<Task>` | Run `limbo note`, return refreshed task list |
 | `delete_task` | `project_path, task_id` | `Vec<Task>` | Run `limbo delete`, return refreshed task list |
+| `block_task` | `project_path, blocker_id, blocked_id` | `Vec<Task>` | Run `limbo block`, return refreshed task list |
+| `unblock_task` | `project_path, blocker_id, blocked_id` | `Vec<Task>` | Run `limbo unblock`, return refreshed task list |
+| `list_templates` | -- | `Vec<TaskTemplate>` | Load task templates from config.toml |
 | `check_startup` | -- | `StartupChecks` | Check limbo availability and validate config.toml |
 | `save_session` | `data: String` | `()` | Write session JSON to `~/.ordis/session.json` |
 | `load_session` | -- | `Option<String>` | Read session JSON from `~/.ordis/session.json` |
@@ -89,6 +96,7 @@ A background thread (`watch_tasks`) polls every 2 seconds:
 2. For each project with a `.limbo/` directory, runs `limbo list --show-all`
 3. Compares JSON output against a `HashMap<String, String>` cache
 4. If changed (and not the first poll), emits a `tasks-changed` Tauri event
+5. Diffs old vs new task statuses — sends a desktop notification via `tauri-plugin-notification` when any task's status changes (title distinguishes "Task Completed" vs "Task Status Changed")
 
 This gives the frontend live updates when tasks change from external sources (CLI, other agents).
 
@@ -100,6 +108,7 @@ This gives the frontend live updates when tasks change from external sources (CL
 | `tauri-plugin-dialog` | 2 | Native folder picker dialogs |
 | `tauri-plugin-shell` | 2 | Shell command execution |
 | `tauri-plugin-opener` | 2 | URL/file opening |
+| `tauri-plugin-notification` | 2 | Desktop notifications for task status changes |
 
 ### App State
 
@@ -164,6 +173,10 @@ Terminal theme uses a dark palette (`#1a1a2e` background) with 10,000 lines of s
 The task module manages:
 - **Project discovery**: `loadProjects()` calls `list_projects`, then eagerly loads tasks for all limbo-enabled projects
 - **Task CRUD**: `addTask`, `editTask`, `deleteTask`, `updateTaskStatus`, `addTaskNote` -- all invoke Tauri commands that shell out to limbo CLI. All mutations are wrapped in try/catch with toast error reporting.
+- **Dependencies**: `blockTask`, `unblockTask` -- manage blocked-by relationships between tasks via `limbo block`/`unblock`
+- **Templates**: `loadTemplates()` fetches task templates from config.toml via `list_templates` command
+- **Bulk operations**: `selectedTasks` signal (`Set<string>`), `toggleTaskSelection`, `selectAllTasks`, `clearSelection` helpers. Bulk status change and delete execute sequentially via existing mutations.
+- **Dashboard views**: `dashboardView` signal controls which sub-view renders: `"list"` (default tree), `"kanban"` (3-column board), `"graph"` (dependency DAG), `"timeline"` (horizontal duration bars)
 - **Filtering**: `statusFilter` (all/todo/in-progress/done) and `searchFilter` (text search across name, id, action, owner)
 - **Filtered tree traversal**: `getFilteredRootTasks` / `getFilteredChildTasks` walk ancestors upward so matching child tasks always have their parent chain visible
 - **Live updates**: `setupTaskListener()` subscribes to `tasks-changed` events from the backend watcher thread

@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, State};
+use tauri_plugin_notification::NotificationExt;
 
 // --- Config ---
 
@@ -17,6 +18,8 @@ struct Config {
     projects: Vec<ProjectConfig>,
     #[serde(default)]
     profiles: Vec<ProfileConfig>,
+    #[serde(default)]
+    templates: Vec<TemplateConfig>,
 }
 
 #[derive(Deserialize)]
@@ -31,6 +34,19 @@ struct ProfileConfig {
     cwd: Option<String>,
     agent: Option<String>,
     prompt: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, Clone)]
+struct TemplateConfig {
+    name: String,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    action: Option<String>,
+    #[serde(default)]
+    verify: Option<String>,
+    #[serde(default)]
+    result: Option<String>,
 }
 
 fn load_config() -> Config {
@@ -308,6 +324,26 @@ fn delete_task(project_path: String, task_id: String) -> Result<Vec<Task>, Strin
     run_limbo_mutation(&project_path, &args)
 }
 
+#[tauri::command]
+fn block_task(
+    project_path: String,
+    blocker_id: String,
+    blocked_id: String,
+) -> Result<Vec<Task>, String> {
+    let args: Vec<String> = vec!["block".into(), blocker_id, blocked_id];
+    run_limbo_mutation(&project_path, &args)
+}
+
+#[tauri::command]
+fn unblock_task(
+    project_path: String,
+    blocker_id: String,
+    blocked_id: String,
+) -> Result<Vec<Task>, String> {
+    let args: Vec<String> = vec!["unblock".into(), blocker_id, blocked_id];
+    run_limbo_mutation(&project_path, &args)
+}
+
 // --- Git ---
 
 #[tauri::command]
@@ -388,6 +424,33 @@ fn list_profiles() -> Vec<Profile> {
                 .map(|c| expand_tilde(&c).to_string_lossy().to_string()),
             agent: p.agent,
             prompt: p.prompt,
+        })
+        .collect()
+}
+
+// --- Templates ---
+
+#[derive(Serialize, Clone)]
+struct TaskTemplate {
+    name: String,
+    description: Option<String>,
+    action: Option<String>,
+    verify: Option<String>,
+    result: Option<String>,
+}
+
+#[tauri::command]
+fn list_templates() -> Vec<TaskTemplate> {
+    let config = load_config();
+    config
+        .templates
+        .into_iter()
+        .map(|t| TaskTemplate {
+            name: t.name,
+            description: t.description,
+            action: t.action,
+            verify: t.verify,
+            result: t.result,
         })
         .collect()
 }
@@ -570,6 +633,14 @@ fn delete_workspace(name: String) -> Result<(), String> {
 
 // --- Watcher ---
 
+fn parse_tasks_from_json(json: &str) -> Vec<Task> {
+    let trimmed = json.trim();
+    if trimmed == "null" || trimmed.is_empty() {
+        return vec![];
+    }
+    serde_json::from_str(trimmed).unwrap_or_default()
+}
+
 fn watch_tasks(handle: tauri::AppHandle) {
     let mut cache: HashMap<String, String> = HashMap::new();
     loop {
@@ -591,22 +662,48 @@ fn watch_tasks(handle: tauri::AppHandle) {
                 let stdout = String::from_utf8_lossy(&output.stdout).to_string();
                 let had_prev = cache.contains_key(name);
                 let changed = cache.get(name) != Some(&stdout);
-                cache.insert(name.clone(), stdout.clone());
+
                 if had_prev && changed {
-                    let trimmed = stdout.trim();
-                    let tasks = if trimmed == "null" || trimmed.is_empty() {
-                        vec![]
-                    } else {
-                        serde_json::from_str(trimmed).unwrap_or_default()
-                    };
+                    // Parse old and new task lists to detect status changes
+                    let old_tasks = parse_tasks_from_json(cache.get(name).unwrap());
+                    let new_tasks = parse_tasks_from_json(&stdout);
+
+                    // Build a map of old task statuses for comparison
+                    let old_status: HashMap<String, String> = old_tasks
+                        .iter()
+                        .map(|t| (t.id.clone(), t.status.clone()))
+                        .collect();
+
+                    // Send notifications for tasks whose status changed
+                    for task in &new_tasks {
+                        if let Some(prev_status) = old_status.get(&task.id)
+                            && prev_status != &task.status
+                        {
+                            let title = if task.status == "done" {
+                                "Task Completed"
+                            } else {
+                                "Task Status Changed"
+                            };
+                            let body = format!("{}: {} ({})", task.id, task.name, task.status);
+                            let _ = handle
+                                .notification()
+                                .builder()
+                                .title(title)
+                                .body(body)
+                                .show();
+                        }
+                    }
+
                     let _ = handle.emit(
                         "tasks-changed",
                         TasksChanged {
                             project: name.clone(),
-                            tasks,
+                            tasks: new_tasks,
                         },
                     );
                 }
+
+                cache.insert(name.clone(), stdout);
             }
         }
 
@@ -623,6 +720,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_pty::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(AppState {
             cwd: Mutex::new(resolve_default_cwd()),
         })
@@ -637,12 +735,15 @@ pub fn run() {
             edit_task,
             add_task_note,
             delete_task,
+            block_task,
+            unblock_task,
             save_session,
             load_session,
             check_startup,
             get_git_info,
             list_agents,
             list_profiles,
+            list_templates,
             list_workspaces,
             save_workspace,
             load_workspace,

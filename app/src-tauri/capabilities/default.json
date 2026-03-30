@@ -8,6 +8,7 @@
     "opener:default",
     "shell:default",
     "dialog:default",
-    "pty:default"
+    "pty:default",
+    "notification:default"
   ]
 }
