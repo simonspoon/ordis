@@ -25,6 +25,14 @@ ordis/
 │   │       ├── DependencyGraph.tsx # DAG visualization of task blocked-by relationships
 │   │       ├── TaskTimeline.tsx   # Horizontal timeline view with duration bars
 │   │       ├── TerminalPane.tsx   # xterm.js + PTY lifecycle per pane
+│   │       ├── ViewerPane.tsx     # Routes file to correct viewer component by type
+│   │       ├── CodeViewer.tsx     # Syntax-highlighted code viewer (Shiki)
+│   │       ├── MarkdownViewer.tsx # Rendered markdown viewer (marked)
+│   │       ├── ImageViewer.tsx    # Image viewer with zoom and pan
+│   │       ├── PdfViewer.tsx      # PDF viewer (pdf.js)
+│   │       ├── DiffViewer.tsx     # Git diff viewer with unified diff display
+│   │       ├── FileBrowser.tsx    # File tree sidebar for browsing project files
+│   │       ├── Settings.tsx       # Claude Code settings editor (5 panels)
 │   │       ├── PaneBar.tsx        # Tab bar with zoom indicator, drag-and-drop reordering
 │   │       ├── StatusBar.tsx      # Bottom status bar (session count, project, git branch)
 │   │       ├── SplitDivider.tsx   # Draggable split resize handles
@@ -56,6 +64,7 @@ Ordis reads `~/.ordis/config.toml` at startup. The config has three top-level fi
 | `projects` | `Vec<{name, path}>` | Named project directories shown in the Dashboard. Each is checked for a `.limbo/` directory to determine task support. |
 | `profiles` | `Vec<{name, cwd?, agent?, prompt?}>` | Terminal profiles — reusable presets launchable from the command palette. |
 | `templates` | `Vec<{name, description, action, verify, result}>` | Task templates — presets for common task types (bug fix, feature, review). Shown in the add-task template picker. |
+| `permission_profiles` | `Vec<{name, allow, deny, default_mode?}>` | Permission profiles — reusable allow/deny rule sets that can be applied to `~/.claude/settings.json`. |
 
 ### Tauri Commands
 
@@ -86,6 +95,20 @@ These are the IPC commands exposed to the frontend via `tauri::generate_handler!
 | `save_workspace` | `name, data` | `()` | Save workspace layout JSON to `~/.ordis/workspaces/<name>.json` |
 | `load_workspace` | `name: String` | `Option<String>` | Load workspace layout JSON by name |
 | `delete_workspace` | `name: String` | `()` | Delete a saved workspace file |
+| `read_file` | `path: String` | `FileContent` | Read a file (text, image as base64, or PDF as base64). 5 MB limit. Rejects binary files. |
+| `list_directory` | `path: String` | `Vec<DirEntry>` | List directory contents sorted directories-first then alphabetically |
+| `detect_file_type` | `path: String` | `String` | Return viewer type for a file extension (`code`, `markdown`, `image`, `pdf`, `diff`) |
+| `get_git_diff` | `path, file_path?` | `String` | Run `git diff` in a directory, optionally scoped to a single file |
+| `read_claude_settings` | -- | `String` | Read `~/.claude/settings.json` (returns `{}` if missing) |
+| `write_claude_settings` | `data: String` | `()` | Write `~/.claude/settings.json` (validates JSON) |
+| `read_project_settings` | `project_path: String` | `String` | Read `<project>/.claude/settings.json` (returns `{}` if missing) |
+| `write_project_settings` | `project_path, data` | `()` | Write `<project>/.claude/settings.json` (validates JSON) |
+| `list_claude_md_files` | `project_path?` | `Vec<ClaudeMdFile>` | Discover CLAUDE.md files at global, project root, and project `.claude/` scopes |
+| `read_claude_md` | `path: String` | `String` | Read a CLAUDE.md file (returns empty string if missing) |
+| `write_claude_md` | `path, content` | `()` | Write a CLAUDE.md file (creates parent directories) |
+| `list_permission_profiles` | -- | `Vec<PermissionProfile>` | Load permission profiles from config.toml |
+| `save_permission_profiles` | `profiles_json: String` | `()` | Save permission profiles to config.toml (replaces `permission_profiles` section) |
+| `apply_permission_profile` | `profile_name: String` | `()` | Merge a named profile's allow/deny/defaultMode into `~/.claude/settings.json` |
 
 All mutation commands follow a pattern: run the limbo CLI as a subprocess, then call `fetch_tasks_for_project()` to return the full refreshed task list. The frontend replaces its entire task array for that project on each mutation response.
 
@@ -118,14 +141,15 @@ This gives the frontend live updates when tasks change from external sources (CL
 
 ### View Modes
 
-The app has two top-level views, toggled via the titlebar:
+The app has three top-level views, toggled via the titlebar:
 
 | View | Component | Description |
 |------|-----------|-------------|
 | Dashboard | `Dashboard.tsx` | Project grid with task CRUD, filtering, and search |
-| Workspace | `App.tsx` (layout rendering) | Multi-pane terminal workspace with optional task sidebar |
+| Workspace | `App.tsx` (layout rendering) | Multi-pane terminal and viewer workspace with task sidebar and file browser |
+| Settings | `Settings.tsx` | Claude Code settings editor with 5 panels |
 
-`viewMode` signal lives in `tasks.ts` and defaults to `"dashboard"`.
+`viewMode` signal lives in `tasks.ts` and defaults to `"dashboard"`. Type is `"dashboard" | "workspace" | "settings"`.
 
 ### Layout Tree (store.ts)
 
@@ -147,15 +171,22 @@ Key design decisions:
 ### Pane State (store.ts)
 
 ```typescript
+type PaneType = "terminal" | "viewer";
+type ViewerType = "code" | "markdown" | "image" | "pdf" | "diff";
+
 interface PaneState {
-  id: string;       // crypto.randomUUID()
-  cwd: string;      // Working directory
-  agent?: string;   // Optional agent name (e.g., "swe-team:project-manager")
-  prompt?: string;  // Optional initial prompt
+  id: string;           // crypto.randomUUID()
+  cwd: string;          // Working directory
+  paneType: PaneType;   // Terminal or file viewer
+  agent?: string;       // Optional agent name (terminal panes only)
+  prompt?: string;      // Optional initial prompt (terminal panes only)
+  viewerType?: ViewerType; // Which viewer to render (viewer panes only)
+  filePath?: string;    // Absolute path to the file (viewer panes only)
+  fileLabel?: string;   // Filename shown in the tab bar (viewer panes only)
 }
 ```
 
-Stored in a SolidJS reactive store (`Record<string, PaneState>`). Operations: `createPane`, `splitPane`, `closePane`, `setPaneCwd`, `toggleZoom`, `swapPanes`, `saveSession`, `restoreSession`.
+Stored in a SolidJS reactive store (`Record<string, PaneState>`). Operations: `createPane`, `createViewerPane`, `splitPane`, `closePane`, `setPaneCwd`, `toggleZoom`, `swapPanes`, `saveSession`, `restoreSession`. `createViewerPane` deduplicates by file path -- if a viewer for the same file already exists, it focuses that pane instead of creating a new one. Session and workspace persistence includes viewer pane state (type, file path, viewer type).
 
 ### Terminal Lifecycle (TerminalPane.tsx)
 
@@ -167,6 +198,24 @@ Each `TerminalPane` on mount:
 5. On PTY exit, auto-closes the pane via `closePane()`
 
 Terminal theme uses a dark palette (`#1a1a2e` background) with 10,000 lines of scrollback.
+
+### Viewer Panes (ViewerPane.tsx)
+
+Viewer panes display files instead of terminals. `ViewerPane` reads `paneType` and `viewerType` from the pane state and routes to the appropriate viewer component:
+
+| ViewerType | Component | Rendering |
+|------------|-----------|-----------|
+| `code` | `CodeViewer` | Syntax highlighting via Shiki. Supports 60+ languages by extension. |
+| `markdown` | `MarkdownViewer` | HTML rendering via marked. |
+| `image` | `ImageViewer` | Base64 data URL with zoom (scroll) and pan (drag). |
+| `pdf` | `PdfViewer` | Page-by-page rendering via pdf.js canvas. |
+| `diff` | `DiffViewer` | Unified diff display with added/removed line highlighting. |
+
+Files are loaded via the `read_file` backend command. Images and PDFs are base64-encoded by the backend. Text files have a 5 MB limit and binary detection (null-byte scan of first 8 KB).
+
+### File Browser (FileBrowser.tsx)
+
+A sidebar panel toggled with **Cmd+E**. Displays a tree of files and directories starting from the active pane's working directory. Clicking a file opens it in a viewer pane (via `createViewerPane`). Directories expand/collapse inline. Entries are sorted directories-first, then alphabetically.
 
 ### Task System (tasks.ts)
 
@@ -181,6 +230,26 @@ The task module manages:
 - **Filtered tree traversal**: `getFilteredRootTasks` / `getFilteredChildTasks` walk ancestors upward so matching child tasks always have their parent chain visible
 - **Live updates**: `setupTaskListener()` subscribes to `tasks-changed` events from the backend watcher thread
 - **Task launch**: Dashboard and sidebar can launch a task as a new workspace pane with agent context (`swe-team:project-manager`) and a prompt containing the task ID, name, and action
+
+### Settings (Settings.tsx)
+
+The Settings view manages Claude Code configuration through five panels:
+
+| Panel | Settings Target | Description |
+|-------|----------------|-------------|
+| Permissions | `~/.claude/settings.json` | Manage allow/deny rules and defaultMode. Apply/save permission profiles from config.toml. |
+| General | `~/.claude/settings.json` | Toggle thinking mode, voice, effort level. |
+| Hooks | `~/.claude/settings.json` | View, add, and remove hooks across 7 event types (PreToolUse, PostToolUse, etc.). |
+| MCP Servers | `~/.claude/settings.json` | Add, remove, and disable MCP servers with command, args, and environment variables. |
+| CLAUDE.md | CLAUDE.md files | Discover and edit CLAUDE.md at global (`~/.claude/`), project root, and project `.claude/` scopes. |
+
+Settings supports both global and project scope. The scope selector switches between `~/.claude/settings.json` and `<project>/.claude/settings.json`. CLAUDE.md editing discovers all three possible file locations and creates parent directories on save.
+
+Permission profiles are stored in `~/.ordis/config.toml` under `[[permission_profiles]]` sections. Applying a profile merges its allow/deny/defaultMode into the active settings.json.
+
+### Command Registry (commands.ts)
+
+The command registry stores all palette-accessible actions. Commands are stored in a reactive `createSignal<Command[]>` (not a mutable array) so the command palette re-renders when commands are registered asynchronously (e.g., after profiles and workspaces load).
 
 ### Data Flow
 

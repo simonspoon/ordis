@@ -30,14 +30,18 @@ ordis/
     └── src/         # SolidJS frontend — pane management, xterm.js terminals
 ```
 
-**Rust backend** manages a shared working directory state and exposes `get_cwd`/`set_cwd` commands. The `tauri-plugin-pty` plugin provides PTY support for embedded terminals.
+**Rust backend** manages working directory state, file I/O, Claude Code settings, and task management via limbo CLI. The `tauri-plugin-pty` plugin provides PTY support for embedded terminals.
 
-**SolidJS frontend** manages multiple terminal panes via a reactive store. Each pane embeds an xterm.js terminal (with WebGL rendering) connected to a PTY process running Claude Code.
+**SolidJS frontend** manages terminal and viewer panes via a reactive store. Terminal panes embed xterm.js (with WebGL rendering) connected to PTY processes running Claude Code. Viewer panes render files with syntax highlighting, markdown, image zoom/pan, PDF pages, or git diffs.
 
 ## Features
 
 - Embedded terminal running Claude Code via PTY
 - Multi-pane support — run multiple Claude sessions side by side
+- File and document viewing — code (Shiki), markdown, images (zoom/pan), PDFs, and git diffs in viewer panes
+- File browser sidebar — browse and open project files with Cmd+E
+- Claude Code settings management — permissions, hooks, MCP servers, and CLAUDE.md editing via Settings view (Cmd+,)
+- Permission profiles — save and apply reusable allow/deny rule sets
 - Drag-and-drop pane reordering via tab headers
 - Pane zoom — temporarily maximize any pane with Cmd+Shift+Enter
 - Terminal search — Cmd+F to search within terminal scrollback
@@ -47,7 +51,7 @@ ordis/
 - Git integration — branch, dirty status, and ahead/behind in pane toolbar and status bar
 - Status bar — session count, project name, and git info at bottom of workspace
 - Command palette — Cmd+K fuzzy launcher for all actions
-- Session persistence — layout and pane state restored on launch
+- Session persistence — layout, terminal, and viewer pane state restored on launch
 - Toast notifications — error, warning, and info feedback
 - Per-pane working directory with folder picker
 - Graceful degradation — warns about missing limbo CLI, WebGL, or config errors

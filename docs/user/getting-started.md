@@ -48,6 +48,18 @@ prompt = "check the backlog"
 name = "quick-review"
 cwd = "~/projects/my-app"
 agent = "swe-team:code-review-agent"
+
+# Permission profiles — reusable allow/deny rule sets for Claude Code
+[[permission_profiles]]
+name = "restrictive"
+allow = ["Read", "Glob", "Grep"]
+deny = ["Bash(rm *)"]
+default_mode = "ask"
+
+[[permission_profiles]]
+name = "permissive"
+allow = ["Read", "Write", "Edit", "Bash"]
+deny = []
 ```
 
 | Field | Required | Description |
@@ -59,6 +71,10 @@ agent = "swe-team:code-review-agent"
 | `profiles[].cwd` | No | Working directory for the pane. Supports `~` expansion. |
 | `profiles[].agent` | No | Agent type to use (e.g., `swe-team:project-manager`) |
 | `profiles[].prompt` | No | Initial prompt to send to Claude Code on launch |
+| `permission_profiles[].name` | Yes | Display name for the profile (shown in Settings) |
+| `permission_profiles[].allow` | No | List of tool patterns to allow (e.g., `["Read", "Bash(git *)"]`) |
+| `permission_profiles[].deny` | No | List of tool patterns to deny (e.g., `["Bash(rm *)"]`) |
+| `permission_profiles[].default_mode` | No | How unmatched tools are handled (e.g., `"ask"`) |
 
 Projects that contain a `.limbo/` directory automatically get task management features (viewing, creating, editing, and launching tasks).
 
@@ -94,11 +110,14 @@ From there you can:
 - **Zoom a pane** with **Cmd+Shift+Enter** to temporarily maximize it
 - **Search terminal output** with **Cmd+F** to find text in scrollback
 - **Select an agent** from the toolbar dropdown to change the agent type for a pane
+- **Open files** with **Cmd+O** to view code, markdown, images, PDFs, or diffs in viewer panes
+- **Browse files** with **Cmd+E** to open a file browser sidebar for the active pane's directory
 - **Open the command palette** with **Cmd+K** to quickly find any action
 - **Save/load workspaces** via the command palette to preserve named layouts
 - **Launch a profile** from the command palette for one-click preset sessions
 - **Change the working directory** of any pane via the folder button in the pane toolbar
 - **Open the task sidebar** with **Cmd+B** for quick task reference while working
+- **Open Settings** with **Cmd+,** to manage Claude Code permissions, hooks, MCP servers, and CLAUDE.md files
 
 ### Launching a Task
 

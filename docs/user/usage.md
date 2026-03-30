@@ -1,6 +1,6 @@
 # Usage
 
-Ordis has two views: **Dashboard** for project and task management, and **Workspace** for multi-pane Claude Code terminal sessions.
+Ordis has three views: **Dashboard** for project and task management, **Workspace** for multi-pane terminal and file viewing sessions, and **Settings** for Claude Code configuration.
 
 ## Dashboard
 
@@ -104,11 +104,31 @@ Filtering is hierarchical: when a child task matches, its entire ancestor chain 
 
 ## Workspace
 
-The Workspace is a multi-pane terminal environment. Each pane runs an independent Claude Code session.
+The Workspace is a multi-pane environment for terminals and file viewers. Terminal panes run independent Claude Code sessions. Viewer panes display files with syntax highlighting, markdown rendering, image zoom/pan, PDF pages, or git diffs.
+
+### File Viewing
+
+Open files in viewer panes alongside your terminal sessions:
+
+- **Cmd+O** -- Open a file via native file picker dialog
+- **Cmd+E** -- Toggle the file browser sidebar (tree view of the active pane's working directory)
+- Click any file in the file browser to open it
+
+Viewer types are auto-detected by file extension:
+
+| Type | Extensions | Rendering |
+|------|-----------|-----------|
+| Code | `.rs`, `.ts`, `.tsx`, `.js`, `.py`, `.go`, `.toml`, `.json`, `.html`, `.css`, and 50+ more | Syntax-highlighted with Shiki |
+| Markdown | `.md`, `.mdx`, `.markdown` | Rendered HTML |
+| Image | `.png`, `.jpg`, `.gif`, `.svg`, `.webp`, `.avif`, and more | Zoom (scroll) and pan (drag) |
+| PDF | `.pdf` | Page-by-page canvas rendering |
+| Diff/Patch | `.diff`, `.patch` | Unified diff with added/removed line highlighting |
+
+Viewer panes deduplicate -- opening the same file twice focuses the existing viewer instead of creating a new one. Viewer panes can be closed with **Cmd+W** even when they are the last pane (unlike terminal panes). Files over 5 MB are rejected; binary files are detected and skipped.
 
 ### Session Persistence
 
-Ordis saves your pane layout and working directories to `~/.ordis/session.json` when the window closes. On next launch, the previous layout is automatically restored. If a saved session exists, Ordis opens directly to the Workspace view.
+Ordis saves your pane layout, working directories, and viewer pane state (file paths, viewer types) to `~/.ordis/session.json` when the window closes. On next launch, the previous layout is automatically restored. If a saved session exists, Ordis opens directly to the Workspace view.
 
 ### Pane Management
 
@@ -201,6 +221,49 @@ Profiles appear in the command palette as "Launch Profile: \<name>". Selecting o
 
 See [Getting Started](getting-started.md) for the profile configuration format.
 
+## Settings
+
+Press **Cmd+,** or click the **Settings** tab in the titlebar to open the Settings view. It manages Claude Code's `settings.json` and `CLAUDE.md` files through five panels:
+
+### Permissions
+
+Manage Claude Code's permission rules:
+
+- **Allow rules** -- tool patterns that run without confirmation (e.g., `Bash(git *)`, `Read`)
+- **Deny rules** -- tool patterns that are always blocked
+- **Default mode** -- how unmatched tools are handled
+- **Permission profiles** -- save and apply named sets of allow/deny rules. Profiles are stored in `~/.ordis/config.toml` under `[[permission_profiles]]` sections. Applying a profile merges its rules into the active settings.json.
+
+### General
+
+Toggle Claude Code behavior settings: thinking mode, voice, and effort level.
+
+### Hooks
+
+View, add, and remove hooks that run on Claude Code events. Supports all 7 event types (PreToolUse, PostToolUse, Notification, Stop, SubagentStop, UserPromptSubmit, Exit). Each hook has a matcher pattern and a command to execute.
+
+### MCP Servers
+
+Manage Model Context Protocol servers:
+
+- Add servers with a command, arguments, and environment variables
+- Enable/disable individual servers without removing them
+- Remove servers
+
+### CLAUDE.md
+
+Discover and edit CLAUDE.md instruction files at three scopes:
+
+- **Global** -- `~/.claude/CLAUDE.md`
+- **Project root** -- `<project>/CLAUDE.md`
+- **Project .claude** -- `<project>/.claude/CLAUDE.md`
+
+Files that don't exist yet can be created from this panel. The editor shows which files exist and which are absent.
+
+### Scope
+
+Settings supports both **global** and **project** scope. Use the scope selector to switch between `~/.claude/settings.json` (global) and `<project>/.claude/settings.json` (project-level).
+
 ## Command Palette
 
 Press **Cmd+K** to open the command palette. It provides fuzzy search across all available actions:
@@ -209,7 +272,10 @@ Press **Cmd+K** to open the command palette. It provides fuzzy search across all
 - Close Current Pane
 - Toggle Pane Zoom
 - Switch to Dashboard / Workspace
+- Open Settings
 - Toggle Task Sidebar
+- Toggle File Browser
+- Open File...
 - New Terminal Session
 - Switch to List View / Kanban View / Dependency Graph / Timeline
 - Save Workspace As...
@@ -249,12 +315,15 @@ All shortcuts use the **Cmd** key (macOS):
 | **Cmd+K** | Open command palette | Anywhere |
 | **Cmd+1** | Switch to Dashboard | Anywhere |
 | **Cmd+2** | Switch to Workspace | Anywhere |
+| **Cmd+,** | Open Settings | Anywhere |
 | **Cmd+B** | Toggle task sidebar | Anywhere |
+| **Cmd+E** | Toggle file browser | Anywhere (switches to Workspace if not already there) |
+| **Cmd+O** | Open file in viewer | Anywhere (opens native file picker) |
 | **Cmd+D** | Split pane vertically | Workspace |
 | **Cmd+Shift+D** | Split pane horizontally | Workspace |
 | **Cmd+Shift+Enter** | Toggle pane zoom | Workspace |
 | **Cmd+F** | Search terminal scrollback | Workspace |
-| **Cmd+W** | Close active pane | Workspace (only if multiple panes) |
+| **Cmd+W** | Close active pane | Workspace (multiple panes required for terminals; viewer panes always closable) |
 | **Cmd+3** to **Cmd+9** | Focus pane by index | Workspace |
 
 ## Live Updates

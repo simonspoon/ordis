@@ -59,10 +59,18 @@ See [architecture.md](architecture.md) for detailed module descriptions.
 
 ### Adding a new view mode
 
-1. Extend the `ViewMode` type in `lib/tasks.ts`
+1. Extend the `ViewMode` type in `lib/tasks.ts` (currently `"dashboard" | "workspace" | "settings"`)
 2. Add a titlebar tab in `App.tsx`
 3. Add a `<Show when={viewMode() === "newmode"}>` block in `App.tsx`
 4. Add keyboard shortcut if desired (follow the `Cmd+N` pattern)
+5. Register a command in the `onMount` block in `App.tsx` for command palette access
+
+### Adding a new viewer type
+
+1. Add the type to the `ViewerType` union in `lib/store.ts`
+2. Add file extension mappings in `detect_viewer_type()` in `lib.rs`
+3. Create a viewer component in `app/src/components/`
+4. Add a routing case in `ViewerPane.tsx`
 
 ### Modifying the layout system
 
@@ -119,7 +127,10 @@ To verify changes manually:
 5. Test pane zoom (**Cmd+Shift+Enter**) -- zoomed pane fills workspace, unzoom restores layout
 6. Test command palette (**Cmd+K**) -- opens, fuzzy search filters, Enter executes, Escape dismisses
 7. If task features were changed, verify CRUD operations work against a project with `.limbo/` initialized
-8. Close and relaunch -- verify session layout is restored from `~/.ordis/session.json`
+8. Test file viewing (**Cmd+O**) -- open a code file, markdown file, and image. Verify syntax highlighting, rendering, and zoom/pan.
+9. Test file browser (**Cmd+E**) -- sidebar shows directory tree, clicking a file opens a viewer pane
+10. Test Settings (**Cmd+,**) -- verify all 5 panels load. Test adding/removing a permission rule and saving.
+11. Close and relaunch -- verify session layout (including viewer panes) is restored from `~/.ordis/session.json`
 
 ## Configuration
 
