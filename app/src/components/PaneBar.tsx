@@ -4,6 +4,15 @@ import {
   closePane, splitPane, getLeafPaneIds,
   isZoomed, toggleZoom, swapPanes,
 } from "../lib/store";
+import type { ViewerType } from "../lib/store";
+
+const viewerTypeLabels: Record<ViewerType, string> = {
+  code: "CODE",
+  markdown: "MD",
+  image: "IMG",
+  pdf: "PDF",
+  diff: "DIFF",
+};
 
 export default function PaneBar() {
   const leafIds = () => getLeafPaneIds();
@@ -11,10 +20,21 @@ export default function PaneBar() {
   const [dragSourceId, setDragSourceId] = createSignal<string | null>(null);
 
   const label = (id: string) => {
-    const cwd = panes[id]?.cwd;
+    const pane = panes[id];
+    if (!pane) return "Terminal";
+    if (pane.paneType === "viewer") {
+      return pane.fileLabel || pane.filePath?.split("/").pop() || "Viewer";
+    }
+    const cwd = pane.cwd;
     if (!cwd) return "Terminal";
     const parts = cwd.split("/");
     return parts[parts.length - 1] || "Terminal";
+  };
+
+  const typeIndicator = (id: string) => {
+    const pane = panes[id];
+    if (!pane || pane.paneType !== "viewer") return null;
+    return viewerTypeLabels[pane.viewerType || "code"];
   };
 
   const onDragStart = (id: string, e: DragEvent) => {
@@ -69,6 +89,9 @@ export default function PaneBar() {
                 onDrop={(e) => onDrop(id, e)}
                 onDragEnd={onDragEnd}
               >
+                  <Show when={typeIndicator(id)}>
+                  <span class="pane-tab-type">{typeIndicator(id)}</span>
+                </Show>
                 <span class="pane-tab-label">{label(id)}</span>
                 <Show when={leafIds().length > 1}>
                   <span

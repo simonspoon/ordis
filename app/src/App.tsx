@@ -2,19 +2,22 @@ import { onMount, onCleanup, For, Show, createMemo, createSignal } from "solid-j
 import { invoke } from "@tauri-apps/api/core";
 import {
   panes, layout, activePaneId, setActivePaneId,
-  createPane, splitPane, closePane, toggleZoom, isZoomed,
+  createPane, createViewerPane, splitPane, closePane, toggleZoom, isZoomed,
   getLeafPaneIds, computeEffectivePositions, computeDividers,
   saveSession, restoreSession,
   saveWorkspace, loadWorkspace, listWorkspaces,
 } from "./lib/store";
+import type { ViewerType } from "./lib/store";
 import { viewMode, setViewMode, setDashboardView } from "./lib/tasks";
 import { toast } from "./lib/toast";
 import { registerCommand, togglePalette, paletteOpen, closePalette } from "./lib/commands";
 import PaneBar from "./components/PaneBar";
 import TerminalPane from "./components/TerminalPane";
+import ViewerPane from "./components/ViewerPane";
 import SplitDivider from "./components/SplitDivider";
 import Dashboard from "./components/Dashboard";
 import TaskSidebar from "./components/TaskSidebar";
+import FileBrowser from "./components/FileBrowser";
 import ToastContainer from "./components/Toast";
 import CommandPalette from "./components/CommandPalette";
 import StatusBar from "./components/StatusBar";
@@ -22,6 +25,7 @@ import "./App.css";
 
 export default function App() {
   const [sidebarVisible, setSidebarVisible] = createSignal(false);
+  const [fileBrowserVisible, setFileBrowserVisible] = createSignal(false);
 
   // Register commands
   onMount(() => {
@@ -62,6 +66,36 @@ export default function App() {
       label: "Toggle Task Sidebar",
       shortcut: "Cmd+B",
       action: () => setSidebarVisible((v) => !v),
+    });
+    registerCommand({
+      id: "toggle-file-browser",
+      label: "Toggle File Browser",
+      shortcut: "Cmd+E",
+      action: () => {
+        setFileBrowserVisible((v) => !v);
+        if (!fileBrowserVisible()) setViewMode("workspace");
+      },
+    });
+    registerCommand({
+      id: "open-file",
+      label: "Open File...",
+      shortcut: "Cmd+O",
+      action: async () => {
+        try {
+          const { open } = await import("@tauri-apps/plugin-dialog");
+          const selected = await open({
+            multiple: false,
+            title: "Open file in viewer",
+          });
+          if (selected) {
+            const viewerType = await invoke<string>("detect_file_type", { path: selected });
+            createViewerPane(selected, viewerType as ViewerType);
+            setViewMode("workspace");
+          }
+        } catch (e) {
+          toast.error(`Failed to open file: ${e}`);
+        }
+      },
     });
     registerCommand({
       id: "split-vertical",
@@ -224,6 +258,28 @@ export default function App() {
         return;
       }
 
+      // File browser toggle: Cmd+E
+      if (e.key === "e" && !e.shiftKey) {
+        e.preventDefault();
+        setFileBrowserVisible((v) => !v);
+        if (viewMode() !== "workspace") setViewMode("workspace");
+        return;
+      }
+
+      // Open file: Cmd+O
+      if (e.key === "o" && !e.shiftKey) {
+        e.preventDefault();
+        import("@tauri-apps/plugin-dialog").then(async ({ open }) => {
+          const selected = await open({ multiple: false, title: "Open file in viewer" });
+          if (selected) {
+            const viewerType = await invoke<string>("detect_file_type", { path: selected });
+            createViewerPane(selected, viewerType as ViewerType);
+            setViewMode("workspace");
+          }
+        }).catch(() => {});
+        return;
+      }
+
       // Workspace-only shortcuts
       if (viewMode() !== "workspace") return;
 
@@ -314,6 +370,7 @@ export default function App() {
         <PaneBar />
         <div class="workspace-layout">
           <TaskSidebar visible={sidebarVisible()} />
+          <FileBrowser visible={fileBrowserVisible()} />
           <div class="terminal-container">
             <Show
               when={leafIds().length > 0}
@@ -339,6 +396,7 @@ export default function App() {
                     const p = pos();
                     return p ? p.w === 0 && p.h === 0 : false;
                   };
+                  const isViewer = () => panes[id]?.paneType === "viewer";
                   return (
                     <Show when={panes[id] && pos()}>
                       <div
@@ -352,7 +410,9 @@ export default function App() {
                           overflow: hidden() ? "hidden" : "visible",
                         }}
                       >
-                        <TerminalPane paneId={id} />
+                        <Show when={isViewer()} fallback={<TerminalPane paneId={id} />}>
+                          <ViewerPane paneId={id} />
+                        </Show>
                       </div>
                     </Show>
                   );

@@ -517,6 +517,222 @@ fn list_agents() -> Vec<String> {
     agents
 }
 
+// --- File I/O ---
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct FileContent {
+    content: String,
+    size: u64,
+    extension: String,
+    viewer_type: String,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct DirEntry {
+    name: String,
+    is_dir: bool,
+    is_file: bool,
+    size: u64,
+    extension: String,
+}
+
+fn detect_viewer_type(ext: &str) -> &'static str {
+    match ext.to_lowercase().as_str() {
+        // Code files
+        "rs" | "ts" | "tsx" | "js" | "jsx" | "py" | "go" | "c" | "cpp" | "h" | "hpp" | "java"
+        | "rb" | "swift" | "kt" | "sh" | "bash" | "zsh" | "fish" | "ps1" | "toml" | "yaml"
+        | "yml" | "json" | "xml" | "html" | "css" | "scss" | "sass" | "less" | "sql" | "lua"
+        | "r" | "php" | "pl" | "ex" | "exs" | "erl" | "hs" | "ml" | "clj" | "scala" | "zig"
+        | "nim" | "v" | "d" | "cs" | "fs" | "vue" | "svelte" | "astro" | "tf" | "hcl" | "nix"
+        | "dockerfile" | "makefile" | "cmake" | "gradle" | "lock" | "conf" | "cfg" | "ini"
+        | "env" | "txt" | "log" | "csv" => "code",
+        // Markdown
+        "md" | "mdx" | "markdown" => "markdown",
+        // Images
+        "png" | "jpg" | "jpeg" | "gif" | "bmp" | "svg" | "webp" | "ico" | "avif" => "image",
+        // PDF
+        "pdf" => "pdf",
+        // Diff/Patch
+        "diff" | "patch" => "diff",
+        // Default to code for unknown text files
+        _ => "code",
+    }
+}
+
+fn is_likely_binary(data: &[u8]) -> bool {
+    // Check first 8KB for null bytes (common binary indicator)
+    let check_len = data.len().min(8192);
+    data[..check_len].contains(&0)
+}
+
+#[tauri::command]
+fn read_file(path: String) -> Result<FileContent, String> {
+    let file_path = PathBuf::from(&path);
+    if !file_path.is_file() {
+        return Err(format!("Not a file: {path}"));
+    }
+
+    let metadata = fs::metadata(&file_path).map_err(|e| format!("Cannot read metadata: {e}"))?;
+    let size = metadata.len();
+
+    // 5MB limit
+    if size > 5 * 1024 * 1024 {
+        return Err(format!("File too large: {} bytes (limit: 5MB)", size));
+    }
+
+    let ext = file_path
+        .extension()
+        .map(|e| e.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    let viewer_type = detect_viewer_type(&ext).to_string();
+
+    // For images, return base64-encoded content
+    if viewer_type == "image" {
+        use std::io::Read;
+        let mut file = fs::File::open(&file_path).map_err(|e| format!("Cannot open file: {e}"))?;
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf)
+            .map_err(|e| format!("Cannot read file: {e}"))?;
+
+        let mime = match ext.to_lowercase().as_str() {
+            "png" => "image/png",
+            "jpg" | "jpeg" => "image/jpeg",
+            "gif" => "image/gif",
+            "bmp" => "image/bmp",
+            "svg" => "image/svg+xml",
+            "webp" => "image/webp",
+            "ico" => "image/x-icon",
+            "avif" => "image/avif",
+            _ => "application/octet-stream",
+        };
+
+        use base64::Engine;
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&buf);
+        return Ok(FileContent {
+            content: format!("data:{mime};base64,{b64}"),
+            size,
+            extension: ext,
+            viewer_type,
+        });
+    }
+
+    // For PDF, return base64-encoded content
+    if viewer_type == "pdf" {
+        use std::io::Read;
+        let mut file = fs::File::open(&file_path).map_err(|e| format!("Cannot open file: {e}"))?;
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf)
+            .map_err(|e| format!("Cannot read file: {e}"))?;
+
+        use base64::Engine;
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&buf);
+        return Ok(FileContent {
+            content: format!("data:application/pdf;base64,{b64}"),
+            size,
+            extension: ext,
+            viewer_type,
+        });
+    }
+
+    // Text files
+    let raw = fs::read(&file_path).map_err(|e| format!("Cannot read file: {e}"))?;
+    if is_likely_binary(&raw) {
+        return Err("File appears to be binary".to_string());
+    }
+
+    let content = String::from_utf8(raw).map_err(|_| "File is not valid UTF-8".to_string())?;
+
+    Ok(FileContent {
+        content,
+        size,
+        extension: ext,
+        viewer_type,
+    })
+}
+
+#[tauri::command]
+fn list_directory(path: String) -> Result<Vec<DirEntry>, String> {
+    let dir_path = PathBuf::from(&path);
+    if !dir_path.is_dir() {
+        return Err(format!("Not a directory: {path}"));
+    }
+
+    let entries = fs::read_dir(&dir_path).map_err(|e| format!("Cannot read directory: {e}"))?;
+    let mut result: Vec<DirEntry> = Vec::new();
+
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        let path = entry.path();
+        let is_dir = path.is_dir();
+        let is_file = path.is_file();
+        let size = path.metadata().map(|m| m.len()).unwrap_or(0);
+        let extension = path
+            .extension()
+            .map(|e| e.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        result.push(DirEntry {
+            name,
+            is_dir,
+            is_file,
+            size,
+            extension,
+        });
+    }
+
+    // Sort: directories first, then alphabetically
+    result.sort_by(|a, b| {
+        b.is_dir
+            .cmp(&a.is_dir)
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
+
+    Ok(result)
+}
+
+#[tauri::command]
+fn detect_file_type(path: String) -> Result<String, String> {
+    let file_path = PathBuf::from(&path);
+    if !file_path.exists() {
+        return Err(format!("Path does not exist: {path}"));
+    }
+    let ext = file_path
+        .extension()
+        .map(|e| e.to_string_lossy().to_string())
+        .unwrap_or_default();
+    Ok(detect_viewer_type(&ext).to_string())
+}
+
+#[tauri::command]
+fn get_git_diff(path: String, file_path: Option<String>) -> Result<String, String> {
+    let dir = PathBuf::from(&path);
+    if !dir.is_dir() {
+        return Err(format!("Not a directory: {path}"));
+    }
+
+    let mut args = vec!["diff".to_string()];
+    if let Some(fp) = file_path {
+        args.push("--".to_string());
+        args.push(fp);
+    }
+
+    let output = Command::new("git")
+        .args(&args)
+        .current_dir(&dir)
+        .output()
+        .map_err(|e| format!("Failed to run git diff: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("git diff failed: {stderr}"));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
 // --- Startup Checks ---
 
 #[derive(Serialize, Clone)]
@@ -748,6 +964,10 @@ pub fn run() {
             save_workspace,
             load_workspace,
             delete_workspace,
+            read_file,
+            list_directory,
+            detect_file_type,
+            get_git_diff,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

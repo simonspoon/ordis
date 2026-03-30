@@ -4,11 +4,18 @@ import { invoke } from "@tauri-apps/api/core";
 
 // --- Types ---
 
+export type PaneType = "terminal" | "viewer";
+export type ViewerType = "code" | "markdown" | "image" | "pdf" | "diff";
+
 export interface PaneState {
   id: string;
   cwd: string;
+  paneType: PaneType;
   agent?: string;
   prompt?: string;
+  viewerType?: ViewerType;
+  filePath?: string;
+  fileLabel?: string;
 }
 
 export type LayoutNode =
@@ -137,8 +144,60 @@ export function isZoomed(): boolean {
 
 export function createPane(cwd: string, opts?: { agent?: string; prompt?: string }): string {
   const id = crypto.randomUUID();
-  setPanes(id, { id, cwd, agent: opts?.agent, prompt: opts?.prompt });
+  setPanes(id, { id, cwd, paneType: "terminal", agent: opts?.agent, prompt: opts?.prompt });
   if (!layout()) setLayout({ type: "leaf", paneId: id });
+  setActivePaneId(id);
+  return id;
+}
+
+export function findViewerPaneByPath(filePath: string): string | null {
+  const leafIds = getLeafPaneIds();
+  for (const id of leafIds) {
+    const p = panes[id];
+    if (p && p.paneType === "viewer" && p.filePath === filePath) {
+      return id;
+    }
+  }
+  return null;
+}
+
+export function createViewerPane(filePath: string, viewerType: ViewerType, cwd?: string): string {
+  // If a viewer for this file already exists, focus it instead
+  const existing = findViewerPaneByPath(filePath);
+  if (existing) {
+    setActivePaneId(existing);
+    return existing;
+  }
+
+  const id = crypto.randomUUID();
+  const dir = cwd || filePath.substring(0, filePath.lastIndexOf("/")) || "/";
+  const fileName = filePath.substring(filePath.lastIndexOf("/") + 1);
+  setPanes(id, { id, cwd: dir, paneType: "viewer", viewerType, filePath, fileLabel: fileName });
+
+  const currentLayout = layout();
+  if (!currentLayout) {
+    setLayout({ type: "leaf", paneId: id });
+  } else {
+    // Split the active pane to add the viewer beside it
+    const active = activePaneId();
+    if (active) {
+      const splitId = crypto.randomUUID();
+      setLayout((prev) =>
+        prev
+          ? replaceLeaf(prev, active, {
+              type: "split",
+              id: splitId,
+              direction: "vertical",
+              first: { type: "leaf", paneId: active },
+              second: { type: "leaf", paneId: id },
+              ratio: 0.5,
+            })
+          : { type: "leaf", paneId: id },
+      );
+    } else {
+      setLayout({ type: "leaf", paneId: id });
+    }
+  }
   setActivePaneId(id);
   return id;
 }
@@ -153,7 +212,7 @@ export function splitPane(direction: "horizontal" | "vertical") {
   const cwd = panes[active]?.cwd || "";
   const newId = crypto.randomUUID();
   const splitId = crypto.randomUUID();
-  setPanes(newId, { id: newId, cwd });
+  setPanes(newId, { id: newId, cwd, paneType: "terminal" });
   setLayout((prev) =>
     prev
       ? replaceLeaf(prev, active, {
@@ -191,19 +250,33 @@ export function swapPanes(paneIdA: string, paneIdB: string) {
 
 // --- Session Persistence ---
 
+interface SessionPaneData {
+  cwd: string;
+  paneType?: PaneType;
+  viewerType?: ViewerType;
+  filePath?: string;
+  fileLabel?: string;
+}
+
 interface SessionData {
   layout: LayoutNode | null;
-  panes: Record<string, { cwd: string }>;
+  panes: Record<string, SessionPaneData>;
   activePaneId: string;
 }
 
 export async function saveSession(): Promise<void> {
   const currentLayout = layout();
   const leafIds = getLeafPaneIds(currentLayout);
-  const paneData: Record<string, { cwd: string }> = {};
+  const paneData: Record<string, SessionPaneData> = {};
   for (const id of leafIds) {
     const p = panes[id];
-    if (p) paneData[id] = { cwd: p.cwd };
+    if (p) paneData[id] = {
+      cwd: p.cwd,
+      paneType: p.paneType,
+      viewerType: p.viewerType,
+      filePath: p.filePath,
+      fileLabel: p.fileLabel,
+    };
   }
   const data: SessionData = {
     layout: currentLayout,
@@ -232,7 +305,14 @@ export async function restoreSession(): Promise<boolean> {
     for (const id of leafIds) {
       const paneInfo = data.panes[id];
       const cwd = paneInfo?.cwd || "";
-      setPanes(id, { id, cwd });
+      setPanes(id, {
+        id,
+        cwd,
+        paneType: paneInfo?.paneType || "terminal",
+        viewerType: paneInfo?.viewerType,
+        filePath: paneInfo?.filePath,
+        fileLabel: paneInfo?.fileLabel,
+      });
     }
 
     setLayout(data.layout);
@@ -249,18 +329,34 @@ export async function restoreSession(): Promise<boolean> {
 
 // --- Workspaces ---
 
+interface WorkspacePaneData {
+  cwd: string;
+  agent?: string;
+  paneType?: PaneType;
+  viewerType?: ViewerType;
+  filePath?: string;
+  fileLabel?: string;
+}
+
 interface WorkspaceData {
   layout: LayoutNode | null;
-  panes: Record<string, { cwd: string; agent?: string }>;
+  panes: Record<string, WorkspacePaneData>;
 }
 
 function captureWorkspace(): WorkspaceData {
   const currentLayout = layout();
   const leafIds = getLeafPaneIds(currentLayout);
-  const paneData: Record<string, { cwd: string; agent?: string }> = {};
+  const paneData: Record<string, WorkspacePaneData> = {};
   for (const id of leafIds) {
     const p = panes[id];
-    if (p) paneData[id] = { cwd: p.cwd, agent: p.agent };
+    if (p) paneData[id] = {
+      cwd: p.cwd,
+      agent: p.agent,
+      paneType: p.paneType,
+      viewerType: p.viewerType,
+      filePath: p.filePath,
+      fileLabel: p.fileLabel,
+    };
   }
   return { layout: currentLayout, panes: paneData };
 }
@@ -288,7 +384,15 @@ export async function loadWorkspace(name: string): Promise<boolean> {
 
   for (const id of leafIds) {
     const paneInfo = data.panes[id];
-    setPanes(id, { id, cwd: paneInfo?.cwd || "", agent: paneInfo?.agent });
+    setPanes(id, {
+      id,
+      cwd: paneInfo?.cwd || "",
+      paneType: paneInfo?.paneType || "terminal",
+      agent: paneInfo?.agent,
+      viewerType: paneInfo?.viewerType,
+      filePath: paneInfo?.filePath,
+      fileLabel: paneInfo?.fileLabel,
+    });
   }
 
   setLayout(data.layout);
