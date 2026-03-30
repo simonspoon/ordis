@@ -733,6 +733,288 @@ fn get_git_diff(path: String, file_path: Option<String>) -> Result<String, Strin
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
+// --- Claude Settings ---
+
+fn claude_settings_path() -> Option<PathBuf> {
+    dirs::home_dir().map(|h| h.join(".claude").join("settings.json"))
+}
+
+#[tauri::command]
+fn read_claude_settings() -> Result<String, String> {
+    let path = claude_settings_path().ok_or("Could not resolve home directory")?;
+    if !path.exists() {
+        return Ok("{}".to_string());
+    }
+    let contents =
+        fs::read_to_string(&path).map_err(|e| format!("Failed to read settings: {e}"))?;
+    // Validate it's valid JSON
+    serde_json::from_str::<serde_json::Value>(&contents)
+        .map_err(|e| format!("Settings file is not valid JSON: {e}"))?;
+    Ok(contents)
+}
+
+#[tauri::command]
+fn write_claude_settings(data: String) -> Result<(), String> {
+    // Validate the incoming data is valid JSON
+    serde_json::from_str::<serde_json::Value>(&data).map_err(|e| format!("Invalid JSON: {e}"))?;
+    let path = claude_settings_path().ok_or("Could not resolve home directory")?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create .claude dir: {e}"))?;
+    }
+    fs::write(&path, &data).map_err(|e| format!("Failed to write settings: {e}"))
+}
+
+#[tauri::command]
+fn read_project_settings(project_path: String) -> Result<String, String> {
+    let path = PathBuf::from(&project_path)
+        .join(".claude")
+        .join("settings.json");
+    if !path.exists() {
+        return Ok("{}".to_string());
+    }
+    let contents =
+        fs::read_to_string(&path).map_err(|e| format!("Failed to read project settings: {e}"))?;
+    serde_json::from_str::<serde_json::Value>(&contents)
+        .map_err(|e| format!("Project settings file is not valid JSON: {e}"))?;
+    Ok(contents)
+}
+
+#[tauri::command]
+fn write_project_settings(project_path: String, data: String) -> Result<(), String> {
+    serde_json::from_str::<serde_json::Value>(&data).map_err(|e| format!("Invalid JSON: {e}"))?;
+    let path = PathBuf::from(&project_path)
+        .join(".claude")
+        .join("settings.json");
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create .claude dir: {e}"))?;
+    }
+    fs::write(&path, &data).map_err(|e| format!("Failed to write project settings: {e}"))
+}
+
+// --- CLAUDE.md ---
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ClaudeMdFile {
+    path: String,
+    scope: String,
+    exists: bool,
+}
+
+#[tauri::command]
+fn list_claude_md_files(project_path: Option<String>) -> Result<Vec<ClaudeMdFile>, String> {
+    let mut files = Vec::new();
+
+    // Global: ~/.claude/CLAUDE.md
+    if let Some(home) = dirs::home_dir() {
+        let global_path = home.join(".claude").join("CLAUDE.md");
+        files.push(ClaudeMdFile {
+            path: global_path.to_string_lossy().to_string(),
+            scope: "global".to_string(),
+            exists: global_path.is_file(),
+        });
+    }
+
+    // Project-level paths
+    if let Some(ref proj) = project_path {
+        let proj_dir = expand_tilde(proj);
+
+        // <project>/CLAUDE.md
+        let project_root = proj_dir.join("CLAUDE.md");
+        files.push(ClaudeMdFile {
+            path: project_root.to_string_lossy().to_string(),
+            scope: "project".to_string(),
+            exists: project_root.is_file(),
+        });
+
+        // <project>/.claude/CLAUDE.md
+        let project_dot = proj_dir.join(".claude").join("CLAUDE.md");
+        files.push(ClaudeMdFile {
+            path: project_dot.to_string_lossy().to_string(),
+            scope: "project-dot-claude".to_string(),
+            exists: project_dot.is_file(),
+        });
+    }
+
+    Ok(files)
+}
+
+#[tauri::command]
+fn read_claude_md(path: String) -> Result<String, String> {
+    let file_path = expand_tilde(&path);
+    if !file_path.is_file() {
+        return Ok(String::new());
+    }
+    fs::read_to_string(&file_path).map_err(|e| format!("Failed to read CLAUDE.md: {e}"))
+}
+
+#[tauri::command]
+fn write_claude_md(path: String, content: String) -> Result<(), String> {
+    let file_path = expand_tilde(&path);
+    if let Some(parent) = file_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create parent directories: {e}"))?;
+    }
+    fs::write(&file_path, &content).map_err(|e| format!("Failed to write CLAUDE.md: {e}"))
+}
+
+// --- Permission Profiles ---
+
+#[derive(Deserialize, Serialize, Clone, Default)]
+struct PermissionProfileConfig {
+    name: String,
+    #[serde(default)]
+    allow: Vec<String>,
+    #[serde(default)]
+    deny: Vec<String>,
+    #[serde(default)]
+    default_mode: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+#[allow(dead_code)]
+struct ConfigWithProfiles {
+    #[serde(default)]
+    default_cwd: Option<String>,
+    #[serde(default)]
+    projects: Vec<ProjectConfig>,
+    #[serde(default)]
+    profiles: Vec<ProfileConfig>,
+    #[serde(default)]
+    templates: Vec<TemplateConfig>,
+    #[serde(default)]
+    permission_profiles: Vec<PermissionProfileConfig>,
+}
+
+fn load_config_with_profiles() -> ConfigWithProfiles {
+    let Some(home) = dirs::home_dir() else {
+        return ConfigWithProfiles::default();
+    };
+    let path = home.join(".ordis").join("config.toml");
+    let Ok(contents) = fs::read_to_string(&path) else {
+        return ConfigWithProfiles::default();
+    };
+    toml::from_str(&contents).unwrap_or_default()
+}
+
+fn config_path() -> Result<PathBuf, String> {
+    dirs::home_dir()
+        .map(|h| h.join(".ordis").join("config.toml"))
+        .ok_or_else(|| "Could not resolve home directory".to_string())
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct PermissionProfile {
+    name: String,
+    allow: Vec<String>,
+    deny: Vec<String>,
+    default_mode: Option<String>,
+}
+
+#[tauri::command]
+fn list_permission_profiles() -> Result<Vec<PermissionProfile>, String> {
+    let config = load_config_with_profiles();
+    Ok(config
+        .permission_profiles
+        .into_iter()
+        .map(|p| PermissionProfile {
+            name: p.name,
+            allow: p.allow,
+            deny: p.deny,
+            default_mode: p.default_mode,
+        })
+        .collect())
+}
+
+#[tauri::command]
+fn save_permission_profiles(profiles_json: String) -> Result<(), String> {
+    let profiles: Vec<PermissionProfileConfig> =
+        serde_json::from_str(&profiles_json).map_err(|e| format!("Invalid JSON: {e}"))?;
+
+    let path = config_path()?;
+    let contents = fs::read_to_string(&path).unwrap_or_default();
+
+    // Parse existing config, update permission_profiles section, rewrite
+    let mut doc: toml::Table =
+        toml::from_str(&contents).map_err(|e| format!("Failed to parse config: {e}"))?;
+
+    // Convert profiles to toml array
+    let toml_profiles: Vec<toml::Value> = profiles
+        .into_iter()
+        .map(|p| {
+            let mut table = toml::Table::new();
+            table.insert("name".into(), toml::Value::String(p.name));
+            table.insert(
+                "allow".into(),
+                toml::Value::Array(p.allow.into_iter().map(toml::Value::String).collect()),
+            );
+            table.insert(
+                "deny".into(),
+                toml::Value::Array(p.deny.into_iter().map(toml::Value::String).collect()),
+            );
+            if let Some(mode) = p.default_mode {
+                table.insert("default_mode".into(), toml::Value::String(mode));
+            }
+            toml::Value::Table(table)
+        })
+        .collect();
+
+    doc.insert(
+        "permission_profiles".into(),
+        toml::Value::Array(toml_profiles),
+    );
+
+    let output = toml::to_string_pretty(&doc).map_err(|e| format!("Failed to serialize: {e}"))?;
+    fs::write(&path, output).map_err(|e| format!("Failed to write config: {e}"))
+}
+
+#[tauri::command]
+fn apply_permission_profile(profile_name: String) -> Result<(), String> {
+    let config = load_config_with_profiles();
+    let profile = config
+        .permission_profiles
+        .into_iter()
+        .find(|p| p.name == profile_name)
+        .ok_or_else(|| format!("Profile '{}' not found", profile_name))?;
+
+    // Read current claude settings
+    let settings_path = claude_settings_path().ok_or("Could not resolve home directory")?;
+    let raw = if settings_path.exists() {
+        fs::read_to_string(&settings_path).map_err(|e| format!("Failed to read settings: {e}"))?
+    } else {
+        "{}".to_string()
+    };
+
+    let mut settings: serde_json::Value =
+        serde_json::from_str(&raw).map_err(|e| format!("Invalid settings JSON: {e}"))?;
+
+    // Merge permissions from profile
+    let perms = settings
+        .as_object_mut()
+        .ok_or("Settings is not a JSON object")?
+        .entry("permissions")
+        .or_insert_with(|| serde_json::json!({}));
+
+    let perms_obj = perms
+        .as_object_mut()
+        .ok_or("permissions is not a JSON object")?;
+
+    perms_obj.insert("allow".into(), serde_json::json!(profile.allow));
+    perms_obj.insert("deny".into(), serde_json::json!(profile.deny));
+    if let Some(mode) = profile.default_mode {
+        perms_obj.insert("defaultMode".into(), serde_json::json!(mode));
+    }
+
+    let output = serde_json::to_string_pretty(&settings)
+        .map_err(|e| format!("Failed to serialize settings: {e}"))?;
+
+    if let Some(parent) = settings_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create .claude dir: {e}"))?;
+    }
+    fs::write(&settings_path, output).map_err(|e| format!("Failed to write settings: {e}"))
+}
+
 // --- Startup Checks ---
 
 #[derive(Serialize, Clone)]
@@ -968,6 +1250,16 @@ pub fn run() {
             list_directory,
             detect_file_type,
             get_git_diff,
+            read_claude_settings,
+            write_claude_settings,
+            read_project_settings,
+            write_project_settings,
+            list_claude_md_files,
+            read_claude_md,
+            write_claude_md,
+            list_permission_profiles,
+            save_permission_profiles,
+            apply_permission_profile,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

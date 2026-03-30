@@ -19,6 +19,7 @@ import Dashboard from "./components/Dashboard";
 import TaskSidebar from "./components/TaskSidebar";
 import FileBrowser from "./components/FileBrowser";
 import ToastContainer from "./components/Toast";
+import Settings from "./components/Settings";
 import CommandPalette from "./components/CommandPalette";
 import StatusBar from "./components/StatusBar";
 import "./App.css";
@@ -40,6 +41,12 @@ export default function App() {
       label: "Switch to Workspace",
       shortcut: "Cmd+2",
       action: () => switchToWorkspace(),
+    });
+    registerCommand({
+      id: "view-settings",
+      label: "Open Settings",
+      shortcut: "Cmd+,",
+      action: () => setViewMode("settings"),
     });
     registerCommand({
       id: "view-kanban",
@@ -251,6 +258,13 @@ export default function App() {
         return;
       }
 
+      // Settings: Cmd+,
+      if (e.key === "," && !e.shiftKey) {
+        e.preventDefault();
+        setViewMode("settings");
+        return;
+      }
+
       // Sidebar toggle: Cmd+B
       if (e.key === "b" && !e.shiftKey) {
         e.preventDefault();
@@ -358,11 +372,21 @@ export default function App() {
           >
             Workspace
           </button>
+          <button
+            class={`titlebar-tab ${viewMode() === "settings" ? "titlebar-tab-active" : ""}`}
+            onClick={() => setViewMode("settings")}
+          >
+            Settings
+          </button>
         </div>
       </div>
 
       <Show when={viewMode() === "dashboard"}>
         <Dashboard />
+      </Show>
+
+      <Show when={viewMode() === "settings"}>
+        <Settings />
       </Show>
 
       {/* Workspace view — always in DOM to preserve terminal sessions */}
