@@ -115,7 +115,7 @@ export default function App() {
       shortcut: "Cmd+W",
       action: () => {
         const active = activePaneId();
-        if (active && getLeafPaneIds().length > 1) closePane(active);
+        if (active && (getLeafPaneIds().length > 1 || panes[active]?.paneType === "viewer")) closePane(active);
       },
     });
     registerCommand({
@@ -295,7 +295,7 @@ export default function App() {
       } else if (e.key === "w") {
         e.preventDefault();
         const active = activePaneId();
-        if (active && getLeafPaneIds().length > 1) closePane(active);
+        if (active && (getLeafPaneIds().length > 1 || panes[active]?.paneType === "viewer")) closePane(active);
       } else if (e.key >= "3" && e.key <= "9") {
         e.preventDefault();
         const ids = getLeafPaneIds();

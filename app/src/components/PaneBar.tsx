@@ -93,7 +93,7 @@ export default function PaneBar() {
                   <span class="pane-tab-type">{typeIndicator(id)}</span>
                 </Show>
                 <span class="pane-tab-label">{label(id)}</span>
-                <Show when={leafIds().length > 1}>
+                <Show when={leafIds().length > 1 || panes[id]?.paneType === "viewer"}>
                   <span
                     class="pane-tab-close"
                     onClick={(e) => {

@@ -1,4 +1,4 @@
-import { Show, createSignal, createResource, Switch, Match, lazy } from "solid-js";
+import { Show, createSignal, createEffect, Switch, Match, lazy } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { panes, activePaneId, setActivePaneId } from "../lib/store";
 import type { ViewerType } from "../lib/store";
@@ -26,13 +26,33 @@ export default function ViewerPane(props: Props) {
   const viewerType = () => (pane()?.viewerType || "code") as ViewerType;
   const fileName = () => pane()?.fileLabel || filePath().split("/").pop() || "File";
 
-  const [fileData] = createResource(filePath, async (path) => {
-    if (!path) return null;
-    try {
-      return await invoke<FileContent>("read_file", { path });
-    } catch (e) {
-      throw new Error(String(e));
+  // Track file content with manual signal for robustness.
+  // createResource with a source signal can skip fetch when source is falsy.
+  const [fileData, setFileData] = createSignal<FileContent | null>(null);
+  const [loading, setLoading] = createSignal(true);
+  const [error, setError] = createSignal<string | null>(null);
+
+  createEffect(() => {
+    const path = filePath();
+    if (!path) {
+      setLoading(false);
+      setError("No file path");
+      return;
     }
+
+    setLoading(true);
+    setError(null);
+    setFileData(null);
+
+    invoke<FileContent>("read_file", { path })
+      .then((data) => {
+        setFileData(data);
+        setLoading(false);
+      })
+      .catch((e) => {
+        setError(String(e));
+        setLoading(false);
+      });
   });
 
   const [lineWrap, setLineWrap] = createSignal(false);
@@ -64,14 +84,14 @@ export default function ViewerPane(props: Props) {
         </div>
       </div>
       <div class="viewer-content">
-        <Show when={fileData.loading}>
+        <Show when={loading()}>
           <div class="viewer-loading">Loading...</div>
         </Show>
-        <Show when={fileData.error}>
-          <div class="viewer-error">{String(fileData.error)}</div>
+        <Show when={error()}>
+          <div class="viewer-error">{error()}</div>
         </Show>
-        <Show when={fileData() && !fileData.loading && !fileData.error}>
-          <Switch fallback={<div class="viewer-error">Unknown viewer type</div>}>
+        <Show when={fileData() && !loading()}>
+          <Switch fallback={<div class="viewer-error">Unknown viewer type: {viewerType()}</div>}>
             <Match when={viewerType() === "code"}>
               <CodeViewer
                 content={fileData()!.content}
