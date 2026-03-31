@@ -1242,10 +1242,12 @@ fn watch_tasks(handle: tauri::AppHandle) {
 
 // --- IPC ---
 
+#[cfg(unix)]
 const SOCKET_PATH: &str = "/tmp/ordis.sock";
 
 // --- CLI Client ---
 
+#[cfg(unix)]
 pub fn launch_client(
     cwd: String,
     agent: Option<String>,
@@ -1294,6 +1296,17 @@ pub fn launch_client(
     }
 }
 
+#[cfg(not(unix))]
+pub fn launch_client(
+    _cwd: String,
+    _agent: Option<String>,
+    _effort: Option<String>,
+    _prompt: Option<String>,
+) {
+    eprintln!("ordis launch is not supported on this platform");
+    std::process::exit(1);
+}
+
 // --- Socket Listener ---
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -1307,6 +1320,7 @@ struct LaunchRequest {
     prompt: Option<String>,
 }
 
+#[cfg(unix)]
 fn start_socket_listener(handle: tauri::AppHandle) {
     use std::io::{Read as _, Write as _};
     use std::os::unix::net::UnixListener;
@@ -1346,6 +1360,11 @@ fn start_socket_listener(handle: tauri::AppHandle) {
             }
         }
     });
+}
+
+#[cfg(not(unix))]
+fn start_socket_listener(_handle: tauri::AppHandle) {
+    // Socket IPC not supported on non-unix platforms
 }
 
 // --- App ---
@@ -1415,5 +1434,6 @@ pub fn run() {
         .expect("error while running Ordis");
 
     // Clean up socket on exit
+    #[cfg(unix)]
     let _ = std::fs::remove_file(SOCKET_PATH);
 }
