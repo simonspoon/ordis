@@ -654,6 +654,37 @@ fn read_file(path: String) -> Result<FileContent, String> {
 }
 
 #[tauri::command]
+fn snapshot_file(path: String) -> Result<FileContent, String> {
+    // Reuse read_file logic — returns file content for caching pre-edit state
+    read_file(path)
+}
+
+#[tauri::command]
+fn compute_diff(
+    old_content: String,
+    new_content: String,
+    file_path: String,
+) -> Result<String, String> {
+    use similar::TextDiff;
+
+    // Sanitize file_path — strip newlines to prevent header injection
+    let safe_path = file_path.replace(['\n', '\r'], "");
+
+    let diff = TextDiff::from_lines(&old_content, &new_content);
+    let mut output = String::new();
+
+    // Unified diff header
+    output.push_str(&format!("--- a/{}\n", safe_path));
+    output.push_str(&format!("+++ b/{}\n", safe_path));
+
+    for hunk in diff.unified_diff().context_radius(3).iter_hunks() {
+        output.push_str(&format!("{}", hunk));
+    }
+
+    Ok(output)
+}
+
+#[tauri::command]
 fn list_directory(path: String) -> Result<Vec<DirEntry>, String> {
     let dir_path = PathBuf::from(&path);
     if !dir_path.is_dir() {
@@ -1247,6 +1278,8 @@ pub fn run() {
             load_workspace,
             delete_workspace,
             read_file,
+            snapshot_file,
+            compute_diff,
             list_directory,
             detect_file_type,
             get_git_diff,

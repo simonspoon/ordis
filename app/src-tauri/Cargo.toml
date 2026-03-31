@@ -23,5 +23,6 @@ tauri-plugin-notification = "2"
 dirs = "6"
 toml = "0.8"
 base64 = "0.22"
+similar = "2"
 serde.workspace = true
 serde_json.workspace = true

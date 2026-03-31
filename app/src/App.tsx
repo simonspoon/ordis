@@ -11,6 +11,7 @@ import type { ViewerType } from "./lib/store";
 import { viewMode, setViewMode, setDashboardView } from "./lib/tasks";
 import { toast } from "./lib/toast";
 import { registerCommand, togglePalette, paletteOpen, closePalette } from "./lib/commands";
+import { artifactSidebarVisible, toggleArtifactSidebar, clearArtifacts, type ArtifactEntry } from "./lib/artifacts";
 import PaneBar from "./components/PaneBar";
 import TerminalPane from "./components/TerminalPane";
 import ViewerPane from "./components/ViewerPane";
@@ -18,6 +19,8 @@ import SplitDivider from "./components/SplitDivider";
 import Dashboard from "./components/Dashboard";
 import TaskSidebar from "./components/TaskSidebar";
 import FileBrowser from "./components/FileBrowser";
+import ArtifactSidebar from "./components/ArtifactSidebar";
+import ArtifactPopover from "./components/ArtifactPopover";
 import ToastContainer from "./components/Toast";
 import Settings from "./components/Settings";
 import CommandPalette from "./components/CommandPalette";
@@ -27,6 +30,7 @@ import "./App.css";
 export default function App() {
   const [sidebarVisible, setSidebarVisible] = createSignal(false);
   const [fileBrowserVisible, setFileBrowserVisible] = createSignal(false);
+  const [popoverArtifact, setPopoverArtifact] = createSignal<ArtifactEntry | null>(null);
 
   // Register commands
   onMount(() => {
@@ -82,6 +86,20 @@ export default function App() {
         setFileBrowserVisible((v) => !v);
         if (!fileBrowserVisible()) setViewMode("workspace");
       },
+    });
+    registerCommand({
+      id: "toggle-artifact-sidebar",
+      label: "Toggle Artifact Sidebar",
+      shortcut: "Cmd+Shift+A",
+      action: () => {
+        toggleArtifactSidebar();
+        if (viewMode() !== "workspace") setViewMode("workspace");
+      },
+    });
+    registerCommand({
+      id: "clear-artifacts",
+      label: "Clear Session Artifacts",
+      action: () => clearArtifacts(),
     });
     registerCommand({
       id: "open-file",
@@ -280,6 +298,14 @@ export default function App() {
         return;
       }
 
+      // Artifact sidebar toggle: Cmd+Shift+A
+      if (e.key === "a" && e.shiftKey) {
+        e.preventDefault();
+        toggleArtifactSidebar();
+        if (viewMode() !== "workspace") setViewMode("workspace");
+        return;
+      }
+
       // Open file: Cmd+O
       if (e.key === "o" && !e.shiftKey) {
         e.preventDefault();
@@ -447,11 +473,19 @@ export default function App() {
               </For>
             </Show>
           </div>
+          <ArtifactSidebar
+            visible={artifactSidebarVisible()}
+            onSelect={(artifact) => setPopoverArtifact(artifact)}
+          />
         </div>
       </div>
 
       <StatusBar />
 
+      <ArtifactPopover
+        artifact={popoverArtifact()}
+        onClose={() => setPopoverArtifact(null)}
+      />
       <CommandPalette />
       <ToastContainer />
     </div>
