@@ -39,6 +39,7 @@ ordis/
 - Embedded terminal running Claude Code via PTY
 - Multi-pane support — run multiple Claude sessions side by side
 - File and document viewing — code (Shiki), markdown, images (zoom/pan), PDFs, and git diffs in viewer panes
+- Session artifact viewer — sidebar tracking files touched by Claude Code with popover preview and diff toggle (Cmd+Shift+A)
 - File browser sidebar — browse and open project files with Cmd+E
 - Claude Code settings management — permissions, hooks, MCP servers, and CLAUDE.md editing via Settings view (Cmd+,)
 - Permission profiles — save and apply reusable allow/deny rule sets

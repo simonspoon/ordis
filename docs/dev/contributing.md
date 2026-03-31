@@ -54,6 +54,7 @@ See [architecture.md](architecture.md) for detailed module descriptions.
    - `lib/tasks.ts` -- project and task state
    - `lib/toast.ts` -- toast notification state and actions
    - `lib/commands.ts` -- command palette registry
+   - `lib/artifacts.ts` -- artifact store and sidebar visibility
 3. Import and render from `App.tsx` or the relevant parent component
 4. Add styles to `app/src/App.css`
 
@@ -98,6 +99,7 @@ The layout tree is a recursive `LayoutNode` type in `lib/store.ts`. If adding a 
 | `cargo clippy --workspace` | repo root | Rust linting |
 | `cargo fmt --check` | repo root | Rust format check |
 | `npx tsc --noEmit` | `app/` | TypeScript type checking |
+| `pnpm test` | `app/` | Run vitest unit tests |
 
 ## CI Pipeline
 
@@ -117,7 +119,22 @@ Both jobs must pass for a PR to merge.
 
 ## Testing
 
-There are currently no unit tests or integration tests in the codebase. The CI runs `cargo test` (which succeeds with zero tests) and `tsc --noEmit` for type safety.
+### Unit Tests
+
+The project uses **vitest** for frontend unit tests. Test files are colocated with source files using the `.test.ts` suffix.
+
+```bash
+cd app
+pnpm test        # Run all tests once
+```
+
+Current test coverage:
+- `lib/artifactParser.test.ts` -- Terminal output parser: ANSI stripping, tool detection patterns, false positive rejection, path extraction edge cases (36 tests)
+- `lib/artifacts.test.ts` -- Artifact store: CRUD, deduplication, eviction at 200 entries, preEditContent storage (16 tests)
+
+The CI runs `cargo test` (Rust) and `tsc --noEmit` (TypeScript type checking).
+
+### Manual Verification
 
 To verify changes manually:
 1. Run `pnpm tauri dev` from `app/`
@@ -130,7 +147,8 @@ To verify changes manually:
 8. Test file viewing (**Cmd+O**) -- open a code file, markdown file, and image. Verify syntax highlighting, rendering, and zoom/pan.
 9. Test file browser (**Cmd+E**) -- sidebar shows directory tree, clicking a file opens a viewer pane
 10. Test Settings (**Cmd+,**) -- verify all 5 panels load. Test adding/removing a permission rule and saving.
-11. Close and relaunch -- verify session layout (including viewer panes) is restored from `~/.ordis/session.json`
+11. Test artifact sidebar (**Cmd+Shift+A**) -- sidebar appears on the right. Ask Claude to create a file; verify the artifact appears in the sidebar. Click the artifact to open the popover viewer.
+12. Close and relaunch -- verify session layout (including viewer panes) is restored from `~/.ordis/session.json`
 
 ## Configuration
 

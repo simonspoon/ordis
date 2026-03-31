@@ -191,6 +191,21 @@ Press **Cmd+B** to toggle the task sidebar in the Workspace view. It shows a com
 
 The sidebar is independent of the Dashboard -- it provides lightweight task awareness while working in terminals.
 
+### Artifact Sidebar
+
+Press **Cmd+Shift+A** to toggle the artifact sidebar on the right side of the Workspace. It tracks files touched by Claude Code during a session:
+
+- **Write/Create** operations show a **+** icon with a "created" badge
+- **Edit/Update** operations show a pencil icon with an "edited" badge
+- **Read** operations show an eye icon with a "read" badge
+- **Screenshots** show a square icon with a "screenshot" badge
+
+Artifacts are listed newest-first. Each entry shows the filename, abbreviated path, and operation type. Click an entry to open a **popover preview** that renders the file using the appropriate viewer (code with syntax highlighting, markdown, images, or diffs).
+
+**Diff toggle:** For edited files, the popover includes a "Diff" button that switches between the rendered file and a unified diff showing changes against the pre-edit content. Pre-edit snapshots are captured automatically when Claude reads a file before editing it.
+
+Artifacts are capped at 200 entries with oldest-first eviction. Use the "Clear Session Artifacts" command (via Cmd+K) to reset the list manually.
+
 ### Status Bar
 
 A fixed bar at the bottom of the Workspace view showing:
@@ -274,7 +289,9 @@ Press **Cmd+K** to open the command palette. It provides fuzzy search across all
 - Switch to Dashboard / Workspace
 - Open Settings
 - Toggle Task Sidebar
+- Toggle Artifact Sidebar
 - Toggle File Browser
+- Clear Session Artifacts
 - Open File...
 - New Terminal Session
 - Switch to List View / Kanban View / Dependency Graph / Timeline
@@ -317,6 +334,7 @@ All shortcuts use the **Cmd** key (macOS):
 | **Cmd+2** | Switch to Workspace | Anywhere |
 | **Cmd+,** | Open Settings | Anywhere |
 | **Cmd+B** | Toggle task sidebar | Anywhere |
+| **Cmd+Shift+A** | Toggle artifact sidebar | Anywhere (switches to Workspace if not already there) |
 | **Cmd+E** | Toggle file browser | Anywhere (switches to Workspace if not already there) |
 | **Cmd+O** | Open file in viewer | Anywhere (opens native file picker) |
 | **Cmd+D** | Split pane vertically | Workspace |

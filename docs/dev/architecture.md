@@ -10,6 +10,7 @@ ordis/
 ├── app/
 │   ├── package.json        # SolidJS + xterm.js + tauri-pty
 │   ├── vite.config.ts      # Vite with vite-plugin-solid
+│   ├── vitest.config.ts    # Vitest test configuration (node environment)
 │   ├── src/                # Frontend (SolidJS)
 │   │   ├── index.tsx       # Entry point
 │   │   ├── App.tsx         # Root component, view routing, keyboard shortcuts
@@ -18,7 +19,9 @@ ordis/
 │   │   │   ├── store.ts    # Pane state, layout tree, zoom, session persistence
 │   │   │   ├── tasks.ts    # Project/task state, limbo integration, mutations
 │   │   │   ├── toast.ts    # Toast notification state and actions
-│   │   │   └── commands.ts # Command palette registry
+│   │   │   ├── commands.ts # Command palette registry
+│   │   │   ├── artifacts.ts     # Artifact store (reactive state, CRUD, LRU eviction)
+│   │   │   └── artifactParser.ts # Terminal output parser (ANSI stripping, tool detection)
 │   │   └── components/
 │   │       ├── Dashboard.tsx      # Project grid, task CRUD, filtering, view toggle
 │   │       ├── KanbanBoard.tsx    # Kanban board view (todo/in-progress/done columns)
@@ -37,6 +40,8 @@ ordis/
 │   │       ├── StatusBar.tsx      # Bottom status bar (session count, project, git branch)
 │   │       ├── SplitDivider.tsx   # Draggable split resize handles
 │   │       ├── TaskSidebar.tsx    # Collapsible task list in workspace view
+│   │       ├── ArtifactSidebar.tsx # Collapsible artifact list (right side of workspace)
+│   │       ├── ArtifactPopover.tsx # Popover overlay with viewer dispatch + diff toggle
 │   │       ├── Toast.tsx          # Toast notification container
 │   │       └── CommandPalette.tsx # Cmd+K fuzzy-search command launcher
 │   └── src-tauri/          # Backend (Rust)
@@ -96,6 +101,8 @@ These are the IPC commands exposed to the frontend via `tauri::generate_handler!
 | `load_workspace` | `name: String` | `Option<String>` | Load workspace layout JSON by name |
 | `delete_workspace` | `name: String` | `()` | Delete a saved workspace file |
 | `read_file` | `path: String` | `FileContent` | Read a file (text, image as base64, or PDF as base64). 5 MB limit. Rejects binary files. |
+| `snapshot_file` | `path: String` | `FileContent` | Alias for `read_file` — semantic intent is pre-edit snapshot for diff comparison |
+| `compute_diff` | `old_content, new_content, file_path` | `String` | Compute unified diff between two strings using the `similar` crate (3-line context radius) |
 | `list_directory` | `path: String` | `Vec<DirEntry>` | List directory contents sorted directories-first then alphabetically |
 | `detect_file_type` | `path: String` | `String` | Return viewer type for a file extension (`code`, `markdown`, `image`, `pdf`, `diff`) |
 | `get_git_diff` | `path, file_path?` | `String` | Run `git diff` in a directory, optionally scoped to a single file |
@@ -132,6 +139,7 @@ This gives the frontend live updates when tasks change from external sources (CL
 | `tauri-plugin-shell` | 2 | Shell command execution |
 | `tauri-plugin-opener` | 2 | URL/file opening |
 | `tauri-plugin-notification` | 2 | Desktop notifications for task status changes |
+| `similar` | 2 | Text diffing for artifact pre-edit vs post-edit comparison |
 
 ### App State
 
@@ -198,6 +206,22 @@ Each `TerminalPane` on mount:
 5. On PTY exit, auto-closes the pane via `closePane()`
 
 Terminal theme uses a dark palette (`#1a1a2e` background) with 10,000 lines of scrollback.
+
+The PTY data handler also feeds output through the artifact parser (`artifactParser.ts`) line by line. When a Claude Code tool operation is detected (Write, Edit, Read, Screenshot), the file is added to the artifact store. For Read operations, a pre-edit snapshot is captured immediately via `snapshot_file` so the content is available for diff comparison when a subsequent Edit is detected.
+
+**Gotcha:** Data from `tauri-pty`'s `onData` callback is not a standard `Uint8Array`. It must be wrapped with `new Uint8Array(data)` before passing to `TextDecoder.decode()` or any API that expects a typed array. The existing `term.write(new Uint8Array(data))` call already does this for xterm.js.
+
+### Artifact System (artifacts.ts, artifactParser.ts)
+
+The artifact system detects files touched by Claude Code during a terminal session and displays them in a sidebar.
+
+**Parser (`artifactParser.ts`):** Strips ANSI escape sequences from PTY output, extracts file paths, and matches against tool-operation patterns (Write/Created, Edit/Updated, Read, Screenshot). Rejects system paths (`/dev/`, `/proc/`, `/sys/`). Read operations require a known source file extension to reduce false positives. Path matches are capped at 512 characters.
+
+**Store (`artifacts.ts`):** SolidJS reactive store keyed by artifact ID. Deduplicates by file path -- re-editing the same file updates the existing entry. `preEditContent` is stored in a separate `Map` (outside the reactive store) to avoid diffing overhead on large strings. Capped at 200 entries with oldest-first eviction.
+
+**Sidebar (`ArtifactSidebar.tsx`):** 260px collapsible panel on the right side of the workspace (toggled with Cmd+Shift+A). Lists artifacts newest-first with operation icons and badges.
+
+**Popover (`ArtifactPopover.tsx`):** Overlay that lazy-loads the appropriate viewer component (CodeViewer, MarkdownViewer, ImageViewer, DiffViewer). For edited files with pre-edit content, a toggle switches between rendered view and unified diff. Dismissable via backdrop click, close button, or Escape.
 
 ### Viewer Panes (ViewerPane.tsx)
 
