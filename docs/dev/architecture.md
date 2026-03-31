@@ -48,8 +48,8 @@ ordis/
 │       ├── Cargo.toml      # Crate: ordis (staticlib + cdylib + rlib)
 │       ├── tauri.conf.json # App config, CSP, window defaults
 │       └── src/
-│           ├── main.rs     # Entry point (calls lib::run)
-│           └── lib.rs      # All backend logic: config, commands, watcher
+│           ├── main.rs     # Entry point: clap CLI parsing, routes to GUI or launch client
+│           └── lib.rs      # All backend logic: config, commands, watcher, socket IPC
 └── .github/workflows/
     ├── ci.yml              # cargo check/test/clippy + pnpm tsc --noEmit
     └── release.yml         # Release builds
@@ -57,7 +57,7 @@ ordis/
 
 ## Backend (Rust)
 
-All backend logic lives in `app/src-tauri/src/lib.rs`. There is no module splitting yet.
+All backend logic lives in `app/src-tauri/src/lib.rs`. There is no module splitting yet. The CLI entry point (`main.rs`) uses `clap` to parse subcommands — `ordis launch` routes to the IPC client; no subcommand routes to `ordis_lib::run()` (GUI mode).
 
 ### Configuration
 
@@ -119,6 +119,25 @@ These are the IPC commands exposed to the frontend via `tauri::generate_handler!
 
 All mutation commands follow a pattern: run the limbo CLI as a subprocess, then call `fetch_tasks_for_project()` to return the full refreshed task list. The frontend replaces its entire task array for that project on each mutation response.
 
+### Socket IPC (CLI Launch)
+
+Ordis starts a unix domain socket listener at `/tmp/ordis.sock` on startup (in `start_socket_listener()`). The listener runs in a background thread and accepts JSON `LaunchRequest` payloads:
+
+```rust
+struct LaunchRequest {
+    cwd: String,
+    agent: Option<String>,
+    effort: Option<String>,
+    prompt: Option<String>,
+}
+```
+
+On receipt, it emits a `launch-session` Tauri event with the request as payload, then writes `"ok"` as an ack. The frontend listens for this event in `App.tsx`, switches to workspace view, and calls `createPane()` with the launch parameters.
+
+The CLI client (`launch_client()` in lib.rs) connects to the socket, sends JSON, reads the ack, and exits. If the connection fails, it prints an error and exits with code 1.
+
+Stale sockets are cleaned up on startup (removed before bind). The socket is removed after `tauri::Builder::run()` returns.
+
 ### Task Watcher
 
 A background thread (`watch_tasks`) polls every 2 seconds:
@@ -140,6 +159,7 @@ This gives the frontend live updates when tasks change from external sources (CL
 | `tauri-plugin-opener` | 2 | URL/file opening |
 | `tauri-plugin-notification` | 2 | Desktop notifications for task status changes |
 | `similar` | 2 | Text diffing for artifact pre-edit vs post-edit comparison |
+| `clap` | 4 (derive) | CLI argument parsing for `ordis launch` subcommand |
 
 ### App State
 
@@ -187,6 +207,7 @@ interface PaneState {
   cwd: string;          // Working directory
   paneType: PaneType;   // Terminal or file viewer
   agent?: string;       // Optional agent name (terminal panes only)
+  effort?: string;      // Optional effort level: low|medium|high|max (terminal panes only)
   prompt?: string;      // Optional initial prompt (terminal panes only)
   viewerType?: ViewerType; // Which viewer to render (viewer panes only)
   filePath?: string;    // Absolute path to the file (viewer panes only)
@@ -200,7 +221,7 @@ Stored in a SolidJS reactive store (`Record<string, PaneState>`). Operations: `c
 
 Each `TerminalPane` on mount:
 1. Creates an xterm.js `Terminal` with WebGL addon (falls back to canvas/DOM renderer on failure, shows a warning toast)
-2. Spawns a PTY via `tauri-pty`: `/bin/zsh -l -c "claude --dangerously-skip-permissions [--agent X] [prompt]"`
+2. Spawns a PTY via `tauri-pty`: `/bin/zsh -l -c "claude --dangerously-skip-permissions [--agent X] [--effort Y] [prompt]"`
 3. Connects bidirectional data: PTY output to terminal display, terminal input to PTY
 4. Attaches a `ResizeObserver` + `FitAddon` for auto-sizing on container resize
 5. On PTY exit, auto-closes the pane via `closePane()`

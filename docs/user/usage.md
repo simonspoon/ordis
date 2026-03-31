@@ -344,6 +344,49 @@ All shortcuts use the **Cmd** key (macOS):
 | **Cmd+W** | Close active pane | Workspace (multiple panes required for terminals; viewer panes always closable) |
 | **Cmd+3** to **Cmd+9** | Focus pane by index | Workspace |
 
+## CLI Launch Command
+
+External scripts can start Claude Code sessions in a running Ordis instance using the `ordis launch` subcommand:
+
+```bash
+ordis launch --cwd /path/to/project --agent "swe-team:tech-lead" --effort high --prompt "fix the auth bug"
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--cwd <path>` | Caller's working directory | Working directory for the session |
+| `--agent <name>` | -- | Agent to use (e.g. `swe-team:tech-lead`) |
+| `--effort <level>` | -- | Claude Code effort level: `low`, `medium`, `high`, or `max` |
+| `--prompt <text>` | -- | Initial prompt. Also reads from stdin if not provided and stdin is a pipe |
+
+**Behavior:**
+- Connects to the running Ordis instance via unix socket (`/tmp/ordis.sock`)
+- Ordis creates a new pane in the Workspace view with the specified session
+- Fire-and-forget: the CLI exits immediately after receiving acknowledgement
+- If Ordis is not running, prints an error and exits with code 1
+
+**Piping prompts from stdin:**
+
+```bash
+echo "implement the login page" | ordis launch --cwd /path/to/project --effort high
+```
+
+**Example: limbo task dispatch loop:**
+
+```bash
+while true; do
+  task=$(limbo next --json 2>/dev/null)
+  if [ -z "$task" ]; then sleep 30; continue; fi
+  id=$(echo "$task" | jq -r '.id')
+  limbo claim "$id"
+  ordis launch --cwd /path/to/project --agent "swe-team:project-manager" \
+    --effort high --prompt "handle limbo task $id"
+  sleep 5
+done
+```
+
+Running `ordis` with no subcommand launches the GUI as normal.
+
 ## Live Updates
 
 Task data refreshes automatically. A background process polls limbo every 2 seconds. When tasks change -- whether from CLI activity, other agents, or another Ordis window -- the Dashboard and sidebar update in place without manual refresh.

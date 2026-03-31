@@ -56,6 +56,7 @@ ordis/
 - Toast notifications — error, warning, and info feedback
 - Per-pane working directory with folder picker
 - Graceful degradation — warns about missing limbo CLI, WebGL, or config errors
+- CLI launch command — `ordis launch --cwd --agent --effort --prompt` to start sessions from external scripts via unix socket IPC
 - Dark theme
 
 ## License
