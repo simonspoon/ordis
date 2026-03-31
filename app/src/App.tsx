@@ -1,5 +1,6 @@
 import { onMount, onCleanup, For, Show, createMemo, createSignal } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import {
   panes, layout, activePaneId, setActivePaneId,
   createPane, createViewerPane, splitPane, closePane, toggleZoom, isZoomed,
@@ -234,6 +235,20 @@ export default function App() {
     if (restored) {
       setViewMode("workspace");
     }
+  });
+
+  // Listen for CLI launch requests
+  onMount(() => {
+    let unlisten: (() => void) | undefined;
+    listen<{ cwd: string; agent?: string; effort?: string; prompt?: string }>(
+      "launch-session",
+      (event) => {
+        const { cwd, agent, effort, prompt } = event.payload;
+        setViewMode("workspace");
+        createPane(cwd, { agent: agent || undefined, effort: effort || undefined, prompt: prompt || undefined });
+      },
+    ).then((fn) => { unlisten = fn; });
+    onCleanup(() => unlisten?.());
   });
 
   // Save session on window close

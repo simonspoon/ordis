@@ -1240,6 +1240,114 @@ fn watch_tasks(handle: tauri::AppHandle) {
     }
 }
 
+// --- IPC ---
+
+const SOCKET_PATH: &str = "/tmp/ordis.sock";
+
+// --- CLI Client ---
+
+pub fn launch_client(
+    cwd: String,
+    agent: Option<String>,
+    effort: Option<String>,
+    prompt: Option<String>,
+) {
+    use std::io::{Read as _, Write as _};
+    use std::os::unix::net::UnixStream;
+
+    let mut stream = match UnixStream::connect(SOCKET_PATH) {
+        Ok(s) => s,
+        Err(_) => {
+            eprintln!("ordis is not running (could not connect to {SOCKET_PATH})");
+            std::process::exit(1);
+        }
+    };
+
+    let request = serde_json::json!({
+        "cwd": cwd,
+        "agent": agent,
+        "effort": effort,
+        "prompt": prompt,
+    });
+
+    let payload = request.to_string();
+    if let Err(e) = stream.write_all(payload.as_bytes()) {
+        eprintln!("failed to send launch request: {e}");
+        std::process::exit(1);
+    }
+    // Signal end of write
+    if let Err(e) = stream.shutdown(std::net::Shutdown::Write) {
+        eprintln!("failed to signal end of request: {e}");
+        std::process::exit(1);
+    }
+
+    // Read ack
+    let mut ack = String::new();
+    if let Err(e) = stream.read_to_string(&mut ack) {
+        eprintln!("failed to read ack: {e}");
+        std::process::exit(1);
+    }
+
+    if ack.trim() != "ok" {
+        eprintln!("unexpected response from ordis: {ack}");
+        std::process::exit(1);
+    }
+}
+
+// --- Socket Listener ---
+
+#[derive(Serialize, Deserialize, Clone)]
+struct LaunchRequest {
+    cwd: String,
+    #[serde(default)]
+    agent: Option<String>,
+    #[serde(default)]
+    effort: Option<String>,
+    #[serde(default)]
+    prompt: Option<String>,
+}
+
+fn start_socket_listener(handle: tauri::AppHandle) {
+    use std::io::{Read as _, Write as _};
+    use std::os::unix::net::UnixListener;
+
+    // Clean up stale socket
+    let _ = std::fs::remove_file(SOCKET_PATH);
+
+    let listener = match UnixListener::bind(SOCKET_PATH) {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("failed to bind socket at {SOCKET_PATH}: {e}");
+            return;
+        }
+    };
+
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let mut stream = match stream {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
+
+            let mut buf = String::new();
+            if stream.read_to_string(&mut buf).is_err() {
+                let _ = stream.write_all(b"error");
+                continue;
+            }
+
+            match serde_json::from_str::<LaunchRequest>(&buf) {
+                Ok(req) => {
+                    let _ = handle.emit("launch-session", req);
+                    let _ = stream.write_all(b"ok");
+                }
+                Err(_) => {
+                    let _ = stream.write_all(b"error");
+                }
+            }
+        }
+    });
+}
+
 // --- App ---
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1297,8 +1405,15 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
             std::thread::spawn(move || watch_tasks(handle));
+
+            let socket_handle = app.handle().clone();
+            start_socket_listener(socket_handle);
+
             Ok(())
         })
         .run(tauri::generate_context!())
         .expect("error while running Ordis");
+
+    // Clean up socket on exit
+    let _ = std::fs::remove_file(SOCKET_PATH);
 }

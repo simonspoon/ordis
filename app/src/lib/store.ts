@@ -12,6 +12,7 @@ export interface PaneState {
   cwd: string;
   paneType: PaneType;
   agent?: string;
+  effort?: string;
   prompt?: string;
   viewerType?: ViewerType;
   filePath?: string;
@@ -142,9 +143,9 @@ export function isZoomed(): boolean {
 
 // --- Operations ---
 
-export function createPane(cwd: string, opts?: { agent?: string; prompt?: string }): string {
+export function createPane(cwd: string, opts?: { agent?: string; effort?: string; prompt?: string }): string {
   const id = crypto.randomUUID();
-  setPanes(id, { id, cwd, paneType: "terminal", agent: opts?.agent, prompt: opts?.prompt });
+  setPanes(id, { id, cwd, paneType: "terminal", agent: opts?.agent, effort: opts?.effort, prompt: opts?.prompt });
   if (!layout()) setLayout({ type: "leaf", paneId: id });
   setActivePaneId(id);
   return id;

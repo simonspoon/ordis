@@ -180,6 +180,9 @@ export default function TerminalPane(props: Props) {
     if (pane?.agent) {
       command += ` --agent ${shellEscape(pane.agent)}`;
     }
+    if (pane?.effort) {
+      command += ` --effort ${shellEscape(pane.effort)}`;
+    }
     if (pane?.prompt) {
       command += ` ${shellEscape(pane.prompt)}`;
     }
