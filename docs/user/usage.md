@@ -1,6 +1,6 @@
 # Usage
 
-Ordis has three views: **Dashboard** for project and task management, **Workspace** for multi-pane terminal and file viewing sessions, and **Settings** for Claude Code configuration.
+Ordis has three views: **Dashboard** for project and task management, **Sessions** for multi-pane terminal and file viewing sessions, and **Settings** for Claude Code configuration.
 
 ## Dashboard
 
@@ -102,9 +102,9 @@ The Dashboard header provides:
 
 Filtering is hierarchical: when a child task matches, its entire ancestor chain is shown so you can see context.
 
-## Workspace
+## Sessions
 
-The Workspace is a multi-pane environment for terminals and file viewers. Terminal panes run independent Claude Code sessions. Viewer panes display files with syntax highlighting, markdown rendering, image zoom/pan, PDF pages, or git diffs.
+The Sessions view is a multi-pane environment for terminals and file viewers. Terminal panes run independent Claude Code sessions. Viewer panes display files with syntax highlighting, markdown rendering, image zoom/pan, PDF pages, or git diffs.
 
 ### File Viewing
 
@@ -128,12 +128,12 @@ Viewer panes deduplicate -- opening the same file twice focuses the existing vie
 
 ### Session Persistence
 
-Ordis saves your pane layout, working directories, and viewer pane state (file paths, viewer types) to `~/.ordis/session.json` when the window closes. On next launch, the previous layout is automatically restored. If a saved session exists, Ordis opens directly to the Workspace view.
+Ordis saves your pane layout, working directories, and viewer pane state (file paths, viewer types) to `~/.ordis/session.json` when the window closes. On next launch, the previous layout is automatically restored. If a saved session exists, Ordis opens directly to the Sessions view.
 
 ### Pane Management
 
 **Creating panes:**
-- Switch to Workspace (first visit auto-creates one pane)
+- Switch to Sessions (first visit auto-creates one pane)
 - Split the active pane vertically or horizontally
 
 **Closing panes:**
@@ -147,7 +147,7 @@ Ordis saves your pane layout, working directories, and viewer pane state (file p
 - Use **Cmd+3** through **Cmd+9** to jump to panes by position
 
 **Zooming a pane:**
-- Press **Cmd+Shift+Enter** to temporarily maximize the focused pane to fill the entire workspace
+- Press **Cmd+Shift+Enter** to temporarily maximize the focused pane to fill the entire view
 - A **ZOOMED** indicator appears in the tab bar while zoomed
 - Press **Cmd+Shift+Enter** again (or click the indicator) to restore the original split layout
 
@@ -184,7 +184,7 @@ Drag the divider between split panes to resize them. Ratios are clamped between 
 
 ### Task Sidebar
 
-Press **Cmd+B** to toggle the task sidebar in the Workspace view. It shows a compact task list for all projects, with:
+Press **Cmd+B** to toggle the task sidebar in the Sessions view. It shows a compact task list for all projects, with:
 - Clickable status dots for quick status cycling
 - Task IDs and names
 - Launch buttons to open tasks as new panes
@@ -193,7 +193,7 @@ The sidebar is independent of the Dashboard -- it provides lightweight task awar
 
 ### Artifact Sidebar
 
-Press **Cmd+Shift+A** to toggle the artifact sidebar on the right side of the Workspace. It tracks files touched by Claude Code during a session:
+Press **Cmd+Shift+A** to toggle the artifact sidebar on the right side of the Sessions view. It tracks files touched by Claude Code during a session:
 
 - **Write/Create** operations show a **+** icon with a "created" badge
 - **Edit/Update** operations show a pencil icon with an "edited" badge
@@ -208,7 +208,7 @@ Artifacts are capped at 200 entries with oldest-first eviction. Use the "Clear S
 
 ### Status Bar
 
-A fixed bar at the bottom of the Workspace view showing:
+A fixed bar at the bottom of the Sessions view showing:
 
 | Element | Description |
 |---------|-------------|
@@ -218,15 +218,15 @@ A fixed bar at the bottom of the Workspace view showing:
 
 The status bar updates automatically when you switch focus between panes.
 
-## Named Workspaces
+## Named Layouts
 
-Save your current pane layout as a named workspace for quick restoration later.
+Save your current pane layout as a named layout for quick restoration later.
 
-- **Save**: Open the command palette (**Cmd+K**) and select "Save Workspace As..." — enter a name when prompted
-- **Load**: Saved workspaces appear in the command palette as "Load Workspace: \<name>"
-- **Delete**: Use "Delete Workspace: \<name>" from the command palette
+- **Save**: Open the command palette (**Cmd+K**) and select "Save Layout As..." — enter a name when prompted
+- **Load**: Saved layouts appear in the command palette as "Load Layout: \<name>"
+- **Delete**: Use "Delete Layout: \<name>" from the command palette
 
-Workspaces are stored as JSON files in `~/.ordis/workspaces/`. Each workspace captures the full layout tree and pane working directories.
+Layouts are stored as JSON files in `~/.ordis/layouts/`. Each layout captures the full layout tree and pane working directories.
 
 ## Terminal Profiles
 
@@ -286,7 +286,7 @@ Press **Cmd+K** to open the command palette. It provides fuzzy search across all
 - Split Pane Vertical / Horizontal
 - Close Current Pane
 - Toggle Pane Zoom
-- Switch to Dashboard / Workspace
+- Switch to Dashboard / Sessions
 - Open Settings
 - Toggle Task Sidebar
 - Toggle Artifact Sidebar
@@ -295,9 +295,9 @@ Press **Cmd+K** to open the command palette. It provides fuzzy search across all
 - Open File...
 - New Terminal Session
 - Switch to List View / Kanban View / Dependency Graph / Timeline
-- Save Workspace As...
-- Load Workspace: \<name> (for each saved workspace)
-- Delete Workspace: \<name>
+- Save Layout As...
+- Load Layout: \<name> (for each saved layout)
+- Delete Layout: \<name>
 - Launch Profile: \<name> (for each configured profile)
 
 Type to filter, use arrow keys to navigate, and press Enter to execute. Press Escape to dismiss.
@@ -331,18 +331,18 @@ All shortcuts use the **Cmd** key (macOS):
 |----------|--------|--------------|
 | **Cmd+K** | Open command palette | Anywhere |
 | **Cmd+1** | Switch to Dashboard | Anywhere |
-| **Cmd+2** | Switch to Workspace | Anywhere |
+| **Cmd+2** | Switch to Sessions | Anywhere |
 | **Cmd+,** | Open Settings | Anywhere |
 | **Cmd+B** | Toggle task sidebar | Anywhere |
-| **Cmd+Shift+A** | Toggle artifact sidebar | Anywhere (switches to Workspace if not already there) |
-| **Cmd+E** | Toggle file browser | Anywhere (switches to Workspace if not already there) |
+| **Cmd+Shift+A** | Toggle artifact sidebar | Anywhere (switches to Sessions if not already there) |
+| **Cmd+E** | Toggle file browser | Anywhere (switches to Sessions if not already there) |
 | **Cmd+O** | Open file in viewer | Anywhere (opens native file picker) |
-| **Cmd+D** | Split pane vertically | Workspace |
-| **Cmd+Shift+D** | Split pane horizontally | Workspace |
-| **Cmd+Shift+Enter** | Toggle pane zoom | Workspace |
-| **Cmd+F** | Search terminal scrollback | Workspace |
-| **Cmd+W** | Close active pane | Workspace (multiple panes required for terminals; viewer panes always closable) |
-| **Cmd+3** to **Cmd+9** | Focus pane by index | Workspace |
+| **Cmd+D** | Split pane vertically | Sessions |
+| **Cmd+Shift+D** | Split pane horizontally | Sessions |
+| **Cmd+Shift+Enter** | Toggle pane zoom | Sessions |
+| **Cmd+F** | Search terminal scrollback | Sessions |
+| **Cmd+W** | Close active pane | Sessions (multiple panes required for terminals; viewer panes always closable) |
+| **Cmd+3** to **Cmd+9** | Focus pane by index | Sessions |
 
 ## CLI Launch Command
 
@@ -361,7 +361,7 @@ ordis launch --cwd /path/to/project --agent "swe-team:tech-lead" --effort high -
 
 **Behavior:**
 - Connects to the running Ordis instance via unix socket (`/tmp/ordis.sock`)
-- Ordis creates a new pane in the Workspace view with the specified session
+- Ordis creates a new pane in the Sessions view with the specified session
 - Fire-and-forget: the CLI exits immediately after receiving acknowledgement
 - If Ordis is not running, prints an error and exits with code 1
 

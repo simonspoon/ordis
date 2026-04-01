@@ -14,7 +14,6 @@ const BUNDLED_PLUGINS: Array<[string, () => Promise<PluginModule>]> = [
   ["File Browser", () => import("../plugins/fileBrowserPlugin")],
   ["Artifact Viewer", () => import("../plugins/artifactViewerPlugin")],
   ["Project Management", () => import("../plugins/projectManagementPlugin")],
-  ["Test Plugin", () => import("../plugins/testPlugin")],
   ["Settings", () => import("../plugins/settingsPlugin")],
 ];
 

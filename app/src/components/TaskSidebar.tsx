@@ -107,7 +107,7 @@ function SidebarTask(props: { task: Task; projectName: string; projectPath: stri
     e.stopPropagation();
     const prompt = `Limbo task ${props.task.id} — "${props.task.name}"${props.task.action ? `\nAction: ${props.task.action}` : ""}\n\nPick up this task from limbo and execute it. The task ID is ${props.task.id}.`;
     createPane(props.projectPath, { agent: "swe-team:project-manager", prompt });
-    setViewMode("workspace");
+    setViewMode("sessions");
   };
 
   return (

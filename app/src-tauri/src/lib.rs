@@ -1104,20 +1104,34 @@ fn load_session() -> Result<Option<String>, String> {
     Ok(Some(contents))
 }
 
-// --- Workspaces ---
+// --- Layouts ---
 
-fn workspaces_dir() -> Option<PathBuf> {
-    dirs::home_dir().map(|h| h.join(".ordis").join("workspaces"))
+fn layouts_dir() -> Option<PathBuf> {
+    dirs::home_dir().map(|h| h.join(".ordis").join("layouts"))
 }
 
 #[tauri::command]
-fn list_workspaces() -> Result<Vec<String>, String> {
-    let dir = workspaces_dir().ok_or("Could not resolve home directory")?;
+fn list_layouts() -> Result<Vec<String>, String> {
+    let dir = layouts_dir().ok_or("Could not resolve home directory")?;
     if !dir.exists() {
-        return Ok(vec![]);
+        // Also check legacy "workspaces" dir for migration
+        let legacy = dirs::home_dir().map(|h| h.join(".ordis").join("workspaces"));
+        if let Some(ref legacy_dir) = legacy {
+            if legacy_dir.exists() {
+                if let Ok(()) = fs::rename(legacy_dir, &dir) {
+                    // Successfully migrated — fall through to read the new dir
+                } else {
+                    return Ok(vec![]);
+                }
+            } else {
+                return Ok(vec![]);
+            }
+        } else {
+            return Ok(vec![]);
+        }
     }
     let mut names = Vec::new();
-    let entries = fs::read_dir(&dir).map_err(|e| format!("Failed to read workspaces dir: {e}"))?;
+    let entries = fs::read_dir(&dir).map_err(|e| format!("Failed to read layouts dir: {e}"))?;
     for entry in entries.flatten() {
         let path = entry.path();
         if path.extension().is_some_and(|e| e == "json")
@@ -1131,31 +1145,30 @@ fn list_workspaces() -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-fn save_workspace(name: String, data: String) -> Result<(), String> {
-    let dir = workspaces_dir().ok_or("Could not resolve home directory")?;
-    fs::create_dir_all(&dir).map_err(|e| format!("Failed to create workspaces dir: {e}"))?;
+fn save_layout(name: String, data: String) -> Result<(), String> {
+    let dir = layouts_dir().ok_or("Could not resolve home directory")?;
+    fs::create_dir_all(&dir).map_err(|e| format!("Failed to create layouts dir: {e}"))?;
     let path = dir.join(format!("{name}.json"));
-    fs::write(&path, &data).map_err(|e| format!("Failed to save workspace: {e}"))
+    fs::write(&path, &data).map_err(|e| format!("Failed to save layout: {e}"))
 }
 
 #[tauri::command]
-fn load_workspace(name: String) -> Result<Option<String>, String> {
-    let dir = workspaces_dir().ok_or("Could not resolve home directory")?;
+fn load_layout(name: String) -> Result<Option<String>, String> {
+    let dir = layouts_dir().ok_or("Could not resolve home directory")?;
     let path = dir.join(format!("{name}.json"));
     if !path.exists() {
         return Ok(None);
     }
-    let contents =
-        fs::read_to_string(&path).map_err(|e| format!("Failed to read workspace: {e}"))?;
+    let contents = fs::read_to_string(&path).map_err(|e| format!("Failed to read layout: {e}"))?;
     Ok(Some(contents))
 }
 
 #[tauri::command]
-fn delete_workspace(name: String) -> Result<(), String> {
-    let dir = workspaces_dir().ok_or("Could not resolve home directory")?;
+fn delete_layout(name: String) -> Result<(), String> {
+    let dir = layouts_dir().ok_or("Could not resolve home directory")?;
     let path = dir.join(format!("{name}.json"));
     if path.exists() {
-        fs::remove_file(&path).map_err(|e| format!("Failed to delete workspace: {e}"))?;
+        fs::remove_file(&path).map_err(|e| format!("Failed to delete layout: {e}"))?;
     }
     Ok(())
 }
@@ -1400,10 +1413,10 @@ pub fn run() {
             list_agents,
             list_profiles,
             list_templates,
-            list_workspaces,
-            save_workspace,
-            load_workspace,
-            delete_workspace,
+            list_layouts,
+            save_layout,
+            load_layout,
+            delete_layout,
             read_file,
             snapshot_file,
             compute_diff,

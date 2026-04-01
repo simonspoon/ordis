@@ -6,7 +6,7 @@ import {
   createPane, splitPane, closePane, toggleZoom, isZoomed,
   getLeafPaneIds, computeEffectivePositions, computeDividers,
   saveSession, restoreSession,
-  saveWorkspace, loadWorkspace, listWorkspaces,
+  saveLayout, loadLayout, listLayouts,
 } from "./lib/store";
 import { viewMode, setViewMode } from "./lib/tasks";
 import { toast } from "./lib/toast";
@@ -34,10 +34,10 @@ export default function App() {
       action: () => setViewMode("plugin-project-management"),
     });
     registerCommand({
-      id: "view-workspace",
-      label: "Switch to Workspace",
+      id: "view-sessions",
+      label: "Switch to Sessions",
       shortcut: "Cmd+2",
-      action: () => switchToWorkspace(),
+      action: () => switchToSessions(),
     });
     registerCommand({
       id: "view-settings",
@@ -51,7 +51,7 @@ export default function App() {
       shortcut: "Cmd+E",
       action: () => {
         toggleSessionPlugin("file-browser");
-        if (viewMode() !== "workspace") setViewMode("workspace");
+        if (viewMode() !== "sessions") setViewMode("sessions");
       },
     });
     registerCommand({
@@ -60,7 +60,7 @@ export default function App() {
       shortcut: "Cmd+Shift+A",
       action: () => {
         toggleSessionPlugin("artifact-viewer");
-        if (viewMode() !== "workspace") setViewMode("workspace");
+        if (viewMode() !== "sessions") setViewMode("sessions");
       },
     });
     registerCommand({
@@ -82,7 +82,7 @@ export default function App() {
           if (selected) {
             const viewerType = await invoke<string>("detect_file_type", { path: selected });
             openInViewer(selected, viewerType);
-            setViewMode("workspace");
+            setViewMode("sessions");
           }
         } catch (e) {
           toast.error(`Failed to open file: ${e}`);
@@ -122,7 +122,7 @@ export default function App() {
       action: async () => {
         const cwd = await invoke<string>("get_cwd");
         createPane(cwd);
-        setViewMode("workspace");
+        setViewMode("sessions");
       },
     });
 
@@ -139,31 +139,31 @@ export default function App() {
                 agent: profile.agent || undefined,
                 prompt: profile.prompt || undefined,
               });
-              setViewMode("workspace");
+              setViewMode("sessions");
             },
           });
         }
       })
       .catch(() => { /* Profiles are optional */ });
 
-    // Register workspace commands
+    // Register layout commands
     registerCommand({
-      id: "save-workspace",
-      label: "Save Workspace As...",
+      id: "save-layout",
+      label: "Save Layout As...",
       action: async () => {
-        const name = window.prompt("Workspace name:");
+        const name = window.prompt("Layout name:");
         if (!name?.trim()) return;
         try {
-          await saveWorkspace(name.trim());
-          toast.info(`Workspace "${name.trim()}" saved`);
-          refreshWorkspaceCommands();
+          await saveLayout(name.trim());
+          toast.info(`Layout "${name.trim()}" saved`);
+          refreshLayoutCommands();
         } catch (e) {
-          toast.error(`Failed to save workspace: ${e}`);
+          toast.error(`Failed to save layout: ${e}`);
         }
       },
     });
 
-    refreshWorkspaceCommands();
+    refreshLayoutCommands();
   });
 
   // Startup checks and session restore
@@ -199,7 +199,7 @@ export default function App() {
     // Restore previous session
     const restored = await restoreSession();
     if (restored) {
-      setViewMode("workspace");
+      setViewMode("sessions");
     }
   });
 
@@ -210,7 +210,7 @@ export default function App() {
       "launch-session",
       (event) => {
         const { cwd, agent, effort, prompt } = event.payload;
-        setViewMode("workspace");
+        setViewMode("sessions");
         createPane(cwd, { agent: agent || undefined, effort: effort || undefined, prompt: prompt || undefined });
       },
     ).then((fn) => { unlisten = fn; });
@@ -245,15 +245,15 @@ export default function App() {
         return;
       }
 
-      // View mode: Cmd+1 = Projects, Cmd+2 = Workspace
+      // View mode: Cmd+1 = Projects, Cmd+2 = Sessions
       if (e.key === "1" && !e.shiftKey && viewMode() !== "plugin-project-management") {
         e.preventDefault();
         setViewMode("plugin-project-management");
         return;
       }
-      if (e.key === "2" && !e.shiftKey && viewMode() !== "workspace") {
+      if (e.key === "2" && !e.shiftKey && viewMode() !== "sessions") {
         e.preventDefault();
-        switchToWorkspace();
+        switchToSessions();
         return;
       }
 
@@ -268,7 +268,7 @@ export default function App() {
       if (e.key === "e" && !e.shiftKey) {
         e.preventDefault();
         toggleSessionPlugin("file-browser");
-        if (viewMode() !== "workspace") setViewMode("workspace");
+        if (viewMode() !== "sessions") setViewMode("sessions");
         return;
       }
 
@@ -276,7 +276,7 @@ export default function App() {
       if (e.key === "a" && e.shiftKey) {
         e.preventDefault();
         toggleSessionPlugin("artifact-viewer");
-        if (viewMode() !== "workspace") setViewMode("workspace");
+        if (viewMode() !== "sessions") setViewMode("sessions");
         return;
       }
 
@@ -288,14 +288,14 @@ export default function App() {
           if (selected) {
             const viewerType = await invoke<string>("detect_file_type", { path: selected });
             openInViewer(selected, viewerType);
-            setViewMode("workspace");
+            setViewMode("sessions");
           }
         }).catch(() => {});
         return;
       }
 
-      // Workspace-only shortcuts
-      if (viewMode() !== "workspace") return;
+      // Sessions-only shortcuts
+      if (viewMode() !== "sessions") return;
 
       if (e.key === "Enter" && e.shiftKey) {
         e.preventDefault();
@@ -326,34 +326,34 @@ export default function App() {
     initializePlugins();
   });
 
-  const switchToWorkspace = () => {
-    setViewMode("workspace");
+  const switchToSessions = () => {
+    setViewMode("sessions");
   };
 
-  const refreshWorkspaceCommands = () => {
-    listWorkspaces()
+  const refreshLayoutCommands = () => {
+    listLayouts()
       .then((names) => {
         for (const name of names) {
           registerCommand({
-            id: `workspace-load-${name}`,
-            label: `Load Workspace: ${name}`,
+            id: `layout-load-${name}`,
+            label: `Load Layout: ${name}`,
             action: async () => {
               try {
-                const loaded = await loadWorkspace(name);
+                const loaded = await loadLayout(name);
                 if (loaded) {
-                  setViewMode("workspace");
-                  toast.info(`Workspace "${name}" loaded`);
+                  setViewMode("sessions");
+                  toast.info(`Layout "${name}" loaded`);
                 } else {
-                  toast.error(`Workspace "${name}" is empty or invalid`);
+                  toast.error(`Layout "${name}" is empty or invalid`);
                 }
               } catch (e) {
-                toast.error(`Failed to load workspace: ${e}`);
+                toast.error(`Failed to load layout: ${e}`);
               }
             },
           });
         }
       })
-      .catch(() => { /* Workspaces are optional */ });
+      .catch(() => { /* Layouts are optional */ });
   };
 
   const positions = createMemo(() => computeEffectivePositions(layout()));
@@ -366,10 +366,10 @@ export default function App() {
         <span class="titlebar-title">Ordis</span>
         <div class="titlebar-tabs">
           <button
-            class={`titlebar-tab ${viewMode() === "workspace" ? "titlebar-tab-active" : ""}`}
-            onClick={switchToWorkspace}
+            class={`titlebar-tab ${viewMode() === "sessions" ? "titlebar-tab-active" : ""}`}
+            onClick={switchToSessions}
           >
-            Workspace
+            Sessions
           </button>
           <For each={getWorkspacePlugins()}>
             {(plugin) => (
@@ -396,8 +396,8 @@ export default function App() {
         )}
       </For>
 
-      {/* Workspace view — always in DOM to preserve terminal sessions */}
-      <div style={{ display: viewMode() === "workspace" ? "contents" : "none" }}>
+      {/* Sessions view — always in DOM to preserve terminal sessions */}
+      <div style={{ display: viewMode() === "sessions" ? "contents" : "none" }}>
         <PaneBar />
         <div class="workspace-layout">
           <ActivityBar />

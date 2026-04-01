@@ -14,4 +14,4 @@ Ordis is a Tauri desktop interface for Claude Code with multi-pane terminals and
 | Topic | File | When to read |
 |-------|------|--------------|
 | Getting Started | [user/getting-started.md](user/getting-started.md) | First-time setup, installing prerequisites, creating config, launching Ordis |
-| Usage | [user/usage.md](user/usage.md) | Dashboard, Workspace, and Settings features, keyboard shortcuts, task management, file viewing, pane operations |
+| Usage | [user/usage.md](user/usage.md) | Dashboard, Sessions, and Settings features, keyboard shortcuts, task management, file viewing, pane operations |

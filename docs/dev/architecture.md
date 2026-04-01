@@ -39,8 +39,8 @@ ordis/
 │   │       ├── PaneBar.tsx        # Tab bar with zoom indicator, drag-and-drop reordering
 │   │       ├── StatusBar.tsx      # Bottom status bar (session count, project, git branch)
 │   │       ├── SplitDivider.tsx   # Draggable split resize handles
-│   │       ├── TaskSidebar.tsx    # Collapsible task list in workspace view
-│   │       ├── ArtifactSidebar.tsx # Collapsible artifact list (right side of workspace)
+│   │       ├── TaskSidebar.tsx    # Collapsible task list in sessions view
+│   │       ├── ArtifactSidebar.tsx # Collapsible artifact list (right side of sessions view)
 │   │       ├── ArtifactPopover.tsx # Popover overlay with viewer dispatch + diff toggle
 │   │       ├── Toast.tsx          # Toast notification container
 │   │       └── CommandPalette.tsx # Cmd+K fuzzy-search command launcher
@@ -96,10 +96,10 @@ These are the IPC commands exposed to the frontend via `tauri::generate_handler!
 | `get_git_info` | `path: String` | `Option<GitInfo>` | Get branch, dirty status, ahead/behind for a path. Returns `None` if not a git repo. |
 | `list_profiles` | -- | `Vec<Profile>` | Load profiles from config.toml with tilde expansion on cwd |
 | `list_agents` | -- | `Vec<String>` | Scan `~/.claude/agents/` and plugin cache for available agent `.md` files |
-| `list_workspaces` | -- | `Vec<String>` | List saved workspace names from `~/.ordis/workspaces/*.json` |
-| `save_workspace` | `name, data` | `()` | Save workspace layout JSON to `~/.ordis/workspaces/<name>.json` |
-| `load_workspace` | `name: String` | `Option<String>` | Load workspace layout JSON by name |
-| `delete_workspace` | `name: String` | `()` | Delete a saved workspace file |
+| `list_layouts` | -- | `Vec<String>` | List saved layout names from `~/.ordis/layouts/*.json` |
+| `save_layout` | `name, data` | `()` | Save layout JSON to `~/.ordis/layouts/<name>.json` |
+| `load_layout` | `name: String` | `Option<String>` | Load layout JSON by name |
+| `delete_layout` | `name: String` | `()` | Delete a saved layout file |
 | `read_file` | `path: String` | `FileContent` | Read a file (text, image as base64, or PDF as base64). 5 MB limit. Rejects binary files. |
 | `snapshot_file` | `path: String` | `FileContent` | Alias for `read_file` — semantic intent is pre-edit snapshot for diff comparison |
 | `compute_diff` | `old_content, new_content, file_path` | `String` | Compute unified diff between two strings using the `similar` crate (3-line context radius) |
@@ -132,7 +132,7 @@ struct LaunchRequest {
 }
 ```
 
-On receipt, it emits a `launch-session` Tauri event with the request as payload, then writes `"ok"` as an ack. The frontend listens for this event in `App.tsx`, switches to workspace view, and calls `createPane()` with the launch parameters.
+On receipt, it emits a `launch-session` Tauri event with the request as payload, then writes `"ok"` as an ack. The frontend listens for this event in `App.tsx`, switches to the Sessions view, and calls `createPane()` with the launch parameters.
 
 The CLI client (`launch_client()` in lib.rs) connects to the socket, sends JSON, reads the ack, and exits. If the connection fails, it prints an error and exits with code 1.
 
@@ -174,10 +174,10 @@ The app has three top-level views, toggled via the titlebar:
 | View | Component | Description |
 |------|-----------|-------------|
 | Dashboard | `Dashboard.tsx` | Project grid with task CRUD, filtering, and search |
-| Workspace | `App.tsx` (layout rendering) | Multi-pane terminal and viewer workspace with task sidebar and file browser |
+| Sessions | `App.tsx` (layout rendering) | Multi-pane terminal and viewer environment with task sidebar and file browser |
 | Settings | `Settings.tsx` | Claude Code settings editor with 5 panels |
 
-`viewMode` signal lives in `tasks.ts` and defaults to `"dashboard"`. Type is `"dashboard" | "workspace" | "settings"`.
+`viewMode` signal lives in `tasks.ts` and defaults to `"dashboard"`. Type is `"dashboard" | "sessions" | \`plugin-${string}\``.
 
 ### Layout Tree (store.ts)
 
@@ -215,7 +215,7 @@ interface PaneState {
 }
 ```
 
-Stored in a SolidJS reactive store (`Record<string, PaneState>`). Operations: `createPane`, `createViewerPane`, `splitPane`, `closePane`, `setPaneCwd`, `toggleZoom`, `swapPanes`, `saveSession`, `restoreSession`. `createViewerPane` deduplicates by file path -- if a viewer for the same file already exists, it focuses that pane instead of creating a new one. Session and workspace persistence includes viewer pane state (type, file path, viewer type).
+Stored in a SolidJS reactive store (`Record<string, PaneState>`). Operations: `createPane`, `createViewerPane`, `splitPane`, `closePane`, `setPaneCwd`, `toggleZoom`, `swapPanes`, `saveSession`, `restoreSession`. `createViewerPane` deduplicates by file path -- if a viewer for the same file already exists, it focuses that pane instead of creating a new one. Session and layout persistence includes viewer pane state (type, file path, viewer type).
 
 ### Terminal Lifecycle (TerminalPane.tsx)
 
@@ -240,7 +240,7 @@ The artifact system detects files touched by Claude Code during a terminal sessi
 
 **Store (`artifacts.ts`):** SolidJS reactive store keyed by artifact ID. Deduplicates by file path -- re-editing the same file updates the existing entry. `preEditContent` is stored in a separate `Map` (outside the reactive store) to avoid diffing overhead on large strings. Capped at 200 entries with oldest-first eviction.
 
-**Sidebar (`ArtifactSidebar.tsx`):** 260px collapsible panel on the right side of the workspace (toggled with Cmd+Shift+A). Lists artifacts newest-first with operation icons and badges.
+**Sidebar (`ArtifactSidebar.tsx`):** 260px collapsible panel on the right side of the Sessions view (toggled with Cmd+Shift+A). Lists artifacts newest-first with operation icons and badges.
 
 **Popover (`ArtifactPopover.tsx`):** Overlay that lazy-loads the appropriate viewer component (CodeViewer, MarkdownViewer, ImageViewer, DiffViewer). For edited files with pre-edit content, a toggle switches between rendered view and unified diff. Dismissable via backdrop click, close button, or Escape.
 
@@ -274,7 +274,7 @@ The task module manages:
 - **Filtering**: `statusFilter` (all/todo/in-progress/done) and `searchFilter` (text search across name, id, action, owner)
 - **Filtered tree traversal**: `getFilteredRootTasks` / `getFilteredChildTasks` walk ancestors upward so matching child tasks always have their parent chain visible
 - **Live updates**: `setupTaskListener()` subscribes to `tasks-changed` events from the backend watcher thread
-- **Task launch**: Dashboard and sidebar can launch a task as a new workspace pane with agent context (`swe-team:project-manager`) and a prompt containing the task ID, name, and action
+- **Task launch**: Dashboard and sidebar can launch a task as a new session pane with agent context (`swe-team:project-manager`) and a prompt containing the task ID, name, and action
 
 ### Settings (Settings.tsx)
 
@@ -294,7 +294,7 @@ Permission profiles are stored in `~/.ordis/config.toml` under `[[permission_pro
 
 ### Command Registry (commands.ts)
 
-The command registry stores all palette-accessible actions. Commands are stored in a reactive `createSignal<Command[]>` (not a mutable array) so the command palette re-renders when commands are registered asynchronously (e.g., after profiles and workspaces load).
+The command registry stores all palette-accessible actions. Commands are stored in a reactive `createSignal<Command[]>` (not a mutable array) so the command palette re-renders when commands are registered asynchronously (e.g., after profiles and layouts load).
 
 ### Data Flow
 

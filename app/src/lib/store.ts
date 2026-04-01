@@ -343,9 +343,9 @@ export async function restoreSession(): Promise<boolean> {
   }
 }
 
-// --- Workspaces ---
+// --- Layouts ---
 
-interface WorkspacePaneData {
+interface LayoutPaneData {
   cwd: string;
   agent?: string;
   paneType?: PaneType;
@@ -354,15 +354,15 @@ interface WorkspacePaneData {
   fileLabel?: string;
 }
 
-interface WorkspaceData {
+interface LayoutData {
   layout: LayoutNode | null;
-  panes: Record<string, WorkspacePaneData>;
+  panes: Record<string, LayoutPaneData>;
 }
 
-function captureWorkspace(): WorkspaceData {
+function captureLayout(): LayoutData {
   const currentLayout = layout();
   const leafIds = getLeafPaneIds(currentLayout);
-  const paneData: Record<string, WorkspacePaneData> = {};
+  const paneData: Record<string, LayoutPaneData> = {};
   for (const id of leafIds) {
     const p = panes[id];
     if (p) paneData[id] = {
@@ -377,15 +377,15 @@ function captureWorkspace(): WorkspaceData {
   return { layout: currentLayout, panes: paneData };
 }
 
-export async function saveWorkspace(name: string): Promise<void> {
-  const data = captureWorkspace();
-  await invoke("save_workspace", { name, data: JSON.stringify(data) });
+export async function saveLayout(name: string): Promise<void> {
+  const data = captureLayout();
+  await invoke("save_layout", { name, data: JSON.stringify(data) });
 }
 
-export async function loadWorkspace(name: string): Promise<boolean> {
-  const raw = await invoke<string | null>("load_workspace", { name });
+export async function loadLayout(name: string): Promise<boolean> {
+  const raw = await invoke<string | null>("load_layout", { name });
   if (!raw) return false;
-  const data: WorkspaceData = JSON.parse(raw);
+  const data: LayoutData = JSON.parse(raw);
   if (!data.layout) return false;
 
   // Close all existing panes
@@ -394,7 +394,7 @@ export async function loadWorkspace(name: string): Promise<boolean> {
     setPanes(produce((p) => { delete p[id]; }));
   }
 
-  // Load workspace panes, skipping viewer panes (now handled by overlay plugin)
+  // Load layout panes, skipping viewer panes (now handled by overlay plugin)
   const leafIds = getLeafPaneIds(data.layout);
   if (leafIds.length === 0) return false;
 
@@ -432,12 +432,12 @@ export async function loadWorkspace(name: string): Promise<boolean> {
   return true;
 }
 
-export async function listWorkspaces(): Promise<string[]> {
-  return invoke<string[]>("list_workspaces");
+export async function listLayouts(): Promise<string[]> {
+  return invoke<string[]>("list_layouts");
 }
 
-export async function deleteWorkspace(name: string): Promise<void> {
-  await invoke("delete_workspace", { name });
+export async function deleteLayout(name: string): Promise<void> {
+  await invoke("delete_layout", { name });
 }
 
 // --- Helpers ---

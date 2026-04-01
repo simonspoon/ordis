@@ -98,9 +98,9 @@ The Dashboard shows all projects from your config. Each project card displays:
 
 Click a project card to expand its task list. Click the **+** button to add a task.
 
-### Workspace
+### Sessions
 
-Switch to the Workspace by clicking the **Workspace** tab in the titlebar (or press **Cmd+2**). Ordis creates a terminal pane running Claude Code in your default working directory.
+Switch to Sessions by clicking the **Sessions** tab in the titlebar (or press **Cmd+2**). Ordis creates a terminal pane running Claude Code in your default working directory.
 
 If you previously had a session open, Ordis restores your pane layout automatically on launch.
 
@@ -113,7 +113,7 @@ From there you can:
 - **Open files** with **Cmd+O** to view code, markdown, images, PDFs, or diffs in viewer panes
 - **Browse files** with **Cmd+E** to open a file browser sidebar for the active pane's directory
 - **Open the command palette** with **Cmd+K** to quickly find any action
-- **Save/load workspaces** via the command palette to preserve named layouts
+- **Save/load layouts** via the command palette to preserve named pane arrangements
 - **Launch a profile** from the command palette for one-click preset sessions
 - **Change the working directory** of any pane via the folder button in the pane toolbar
 - **Open the task sidebar** with **Cmd+B** for quick task reference while working
@@ -122,7 +122,7 @@ From there you can:
 ### Launching a Task
 
 From either the Dashboard or the task sidebar, click the play button on any task. Ordis:
-1. Creates a new terminal pane in the Workspace
+1. Creates a new terminal pane in the Sessions view
 2. Sets the working directory to the task's project path
 3. Starts Claude Code with the `swe-team:project-manager` agent
 4. Passes the task ID, name, and action as an initial prompt

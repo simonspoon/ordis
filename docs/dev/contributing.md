@@ -60,7 +60,7 @@ See [architecture.md](architecture.md) for detailed module descriptions.
 
 ### Adding a new view mode
 
-1. Extend the `ViewMode` type in `lib/tasks.ts` (currently `"dashboard" | "workspace" | "settings"`)
+1. Extend the `ViewMode` type in `lib/tasks.ts` (currently `"dashboard" | "sessions" | \`plugin-${string}\``)
 2. Add a titlebar tab in `App.tsx`
 3. Add a `<Show when={viewMode() === "newmode"}>` block in `App.tsx`
 4. Add keyboard shortcut if desired (follow the `Cmd+N` pattern)
@@ -139,9 +139,9 @@ The CI runs `cargo test` (Rust) and `tsc --noEmit` (TypeScript type checking).
 To verify changes manually:
 1. Run `pnpm tauri dev` from `app/`
 2. Check Dashboard view loads with projects from `~/.ordis/config.toml`
-3. Switch to Workspace, verify a terminal pane spawns with Claude Code
+3. Switch to Sessions, verify a terminal pane spawns with Claude Code
 4. Test split/close pane operations
-5. Test pane zoom (**Cmd+Shift+Enter**) -- zoomed pane fills workspace, unzoom restores layout
+5. Test pane zoom (**Cmd+Shift+Enter**) -- zoomed pane fills view, unzoom restores layout
 6. Test command palette (**Cmd+K**) -- opens, fuzzy search filters, Enter executes, Escape dismisses
 7. If task features were changed, verify CRUD operations work against a project with `.limbo/` initialized
 8. Test file viewing (**Cmd+O**) -- open a code file, markdown file, and image. Verify syntax highlighting, rendering, and zoom/pan.
