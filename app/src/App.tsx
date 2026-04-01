@@ -1,4 +1,4 @@
-import { onMount, onCleanup, For, Show, createMemo, createSignal } from "solid-js";
+import { onMount, onCleanup, For, Show, createMemo } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -8,7 +8,7 @@ import {
   saveSession, restoreSession,
   saveWorkspace, loadWorkspace, listWorkspaces,
 } from "./lib/store";
-import { viewMode, setViewMode, setDashboardView } from "./lib/tasks";
+import { viewMode, setViewMode } from "./lib/tasks";
 import { toast } from "./lib/toast";
 import { registerCommand, togglePalette, paletteOpen, closePalette } from "./lib/commands";
 import { clearArtifacts } from "./lib/artifacts";
@@ -18,8 +18,6 @@ import { openInViewer } from "./plugins/contentViewerPlugin";
 import PaneBar from "./components/PaneBar";
 import TerminalPane from "./components/TerminalPane";
 import SplitDivider from "./components/SplitDivider";
-import Dashboard from "./components/Dashboard";
-import TaskSidebar from "./components/TaskSidebar";
 import ToastContainer from "./components/Toast";
 import Settings from "./components/Settings";
 import CommandPalette from "./components/CommandPalette";
@@ -28,15 +26,13 @@ import ActivityBar from "./components/ActivityBar";
 import "./App.css";
 
 export default function App() {
-  const [sidebarVisible, setSidebarVisible] = createSignal(false);
-
   // Register commands
   onMount(() => {
     registerCommand({
       id: "view-dashboard",
-      label: "Switch to Dashboard",
+      label: "Switch to Projects",
       shortcut: "Cmd+1",
-      action: () => setViewMode("dashboard"),
+      action: () => setViewMode("plugin-project-management"),
     });
     registerCommand({
       id: "view-workspace",
@@ -49,32 +45,6 @@ export default function App() {
       label: "Open Settings",
       shortcut: "Cmd+,",
       action: () => setViewMode("settings"),
-    });
-    registerCommand({
-      id: "view-kanban",
-      label: "Switch to Kanban View",
-      action: () => { setViewMode("dashboard"); setDashboardView("kanban"); },
-    });
-    registerCommand({
-      id: "view-list",
-      label: "Switch to List View",
-      action: () => { setViewMode("dashboard"); setDashboardView("list"); },
-    });
-    registerCommand({
-      id: "view-graph",
-      label: "Switch to Dependency Graph",
-      action: () => { setViewMode("dashboard"); setDashboardView("graph"); },
-    });
-    registerCommand({
-      id: "view-timeline",
-      label: "Switch to Timeline",
-      action: () => { setViewMode("dashboard"); setDashboardView("timeline"); },
-    });
-    registerCommand({
-      id: "toggle-sidebar",
-      label: "Toggle Task Sidebar",
-      shortcut: "Cmd+B",
-      action: () => setSidebarVisible((v) => !v),
     });
     registerCommand({
       id: "toggle-file-browser",
@@ -276,10 +246,10 @@ export default function App() {
         return;
       }
 
-      // View mode: Cmd+1 = Dashboard, Cmd+2 = Workspace
-      if (e.key === "1" && !e.shiftKey && viewMode() !== "dashboard") {
+      // View mode: Cmd+1 = Projects, Cmd+2 = Workspace
+      if (e.key === "1" && !e.shiftKey && viewMode() !== "plugin-project-management") {
         e.preventDefault();
-        setViewMode("dashboard");
+        setViewMode("plugin-project-management");
         return;
       }
       if (e.key === "2" && !e.shiftKey && viewMode() !== "workspace") {
@@ -292,13 +262,6 @@ export default function App() {
       if (e.key === "," && !e.shiftKey) {
         e.preventDefault();
         setViewMode("settings");
-        return;
-      }
-
-      // Sidebar toggle: Cmd+B
-      if (e.key === "b" && !e.shiftKey) {
-        e.preventDefault();
-        setSidebarVisible((v) => !v);
         return;
       }
 
@@ -404,12 +367,6 @@ export default function App() {
         <span class="titlebar-title">Ordis</span>
         <div class="titlebar-tabs">
           <button
-            class={`titlebar-tab ${viewMode() === "dashboard" ? "titlebar-tab-active" : ""}`}
-            onClick={() => setViewMode("dashboard")}
-          >
-            Dashboard
-          </button>
-          <button
             class={`titlebar-tab ${viewMode() === "workspace" ? "titlebar-tab-active" : ""}`}
             onClick={switchToWorkspace}
           >
@@ -435,10 +392,6 @@ export default function App() {
         </div>
       </div>
 
-      <Show when={viewMode() === "dashboard"}>
-        <Dashboard />
-      </Show>
-
       <Show when={viewMode() === "settings"}>
         <Settings />
       </Show>
@@ -459,7 +412,6 @@ export default function App() {
         <PaneBar />
         <div class="workspace-layout">
           <ActivityBar />
-          <TaskSidebar visible={sidebarVisible()} />
           <Show when={getActiveSidebar()}>
             {(activeId) => {
               const plugin = () => getSessionPlugins().find((p) => p.manifest.id === activeId());

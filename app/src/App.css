@@ -3495,3 +3495,18 @@ body {
   background: rgba(255, 255, 255, 0.15);
   color: var(--text-primary);
 }
+
+/* --- Project Management Plugin --- */
+
+.project-management-plugin {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.project-management-main {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}

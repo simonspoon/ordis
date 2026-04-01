@@ -50,7 +50,7 @@ export type StatusFilter = "all" | "todo" | "in-progress" | "done";
 
 // --- State ---
 
-export const [viewMode, setViewMode] = createSignal<ViewMode>("dashboard");
+export const [viewMode, setViewMode] = createSignal<ViewMode>("plugin-project-management");
 export const [dashboardView, setDashboardView] = createSignal<DashboardView>("list");
 export const [projects, setProjects] = createStore<Record<string, ProjectState>>({});
 export const [projectsLoading, setProjectsLoading] = createSignal(false);
