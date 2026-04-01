@@ -10,7 +10,7 @@ type PluginModule = {
 // Add bundled plugin dynamic imports here.
 // Each entry: [human-readable name, () => import("../plugins/foo")]
 const BUNDLED_PLUGINS: Array<[string, () => Promise<PluginModule>]> = [
-  // e.g. ["File Browser", () => import("../plugins/fileBrowser")],
+  ["File Browser", () => import("../plugins/fileBrowserPlugin")],
   ["Test Plugin", () => import("../plugins/testPlugin")],
 ];
 

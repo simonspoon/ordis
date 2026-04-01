@@ -1,7 +1,9 @@
-import { createSignal, createResource, For, Show, onMount } from "solid-js";
+import { createSignal, createResource, createEffect, For, Show } from "solid-js";
+import type { Component } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { createViewerPane, activePaneId, panes } from "../lib/store";
 import type { ViewerType } from "../lib/store";
+import { registerSessionPlugin } from "../lib/plugins";
 
 interface DirEntry {
   name: string;
@@ -9,10 +11,6 @@ interface DirEntry {
   isFile: boolean;
   size: number;
   extension: string;
-}
-
-interface Props {
-  visible: boolean;
 }
 
 const extensionIcons: Record<string, string> = {
@@ -73,12 +71,12 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)}M`;
 }
 
-export default function FileBrowser(props: Props) {
+const FileBrowser: Component<{ visible: boolean }> = (props) => {
   const [currentPath, setCurrentPath] = createSignal("");
   const [showHidden, setShowHidden] = createSignal(false);
 
-  // Initialize path from active pane's cwd
-  onMount(async () => {
+  // Reactively track the active pane's cwd
+  createEffect(async () => {
     const active = activePaneId();
     const pane = panes[active];
     if (pane?.cwd) {
@@ -190,5 +188,12 @@ export default function FileBrowser(props: Props) {
         </For>
       </div>
     </div>
+  );
+};
+
+export function init() {
+  registerSessionPlugin(
+    { id: "file-browser", name: "Files", icon: "\u{1F4C1}", type: "sidebar", defaultSide: "left" },
+    FileBrowser,
   );
 }

@@ -13,7 +13,7 @@ import { viewMode, setViewMode, setDashboardView } from "./lib/tasks";
 import { toast } from "./lib/toast";
 import { registerCommand, togglePalette, paletteOpen, closePalette } from "./lib/commands";
 import { artifactSidebarVisible, toggleArtifactSidebar, clearArtifacts, type ArtifactEntry } from "./lib/artifacts";
-import { getSessionPlugins, getWorkspacePlugins, getActiveSidebar, getActiveOverlay, dismissSessionOverlay } from "./lib/plugins";
+import { getSessionPlugins, getWorkspacePlugins, getActiveSidebar, getActiveOverlay, dismissSessionOverlay, toggleSessionPlugin } from "./lib/plugins";
 import { initializePlugins } from "./lib/pluginLoader";
 import PaneBar from "./components/PaneBar";
 import TerminalPane from "./components/TerminalPane";
@@ -21,7 +21,6 @@ import ViewerPane from "./components/ViewerPane";
 import SplitDivider from "./components/SplitDivider";
 import Dashboard from "./components/Dashboard";
 import TaskSidebar from "./components/TaskSidebar";
-import FileBrowser from "./components/FileBrowser";
 import ArtifactSidebar from "./components/ArtifactSidebar";
 import ArtifactPopover from "./components/ArtifactPopover";
 import ToastContainer from "./components/Toast";
@@ -33,7 +32,6 @@ import "./App.css";
 
 export default function App() {
   const [sidebarVisible, setSidebarVisible] = createSignal(false);
-  const [fileBrowserVisible, setFileBrowserVisible] = createSignal(false);
   const [popoverArtifact, setPopoverArtifact] = createSignal<ArtifactEntry | null>(null);
 
   // Register commands
@@ -87,8 +85,8 @@ export default function App() {
       label: "Toggle File Browser",
       shortcut: "Cmd+E",
       action: () => {
-        setFileBrowserVisible((v) => !v);
-        if (!fileBrowserVisible()) setViewMode("workspace");
+        toggleSessionPlugin("file-browser");
+        if (viewMode() !== "workspace") setViewMode("workspace");
       },
     });
     registerCommand({
@@ -311,7 +309,7 @@ export default function App() {
       // File browser toggle: Cmd+E
       if (e.key === "e" && !e.shiftKey) {
         e.preventDefault();
-        setFileBrowserVisible((v) => !v);
+        toggleSessionPlugin("file-browser");
         if (viewMode() !== "workspace") setViewMode("workspace");
         return;
       }
@@ -466,7 +464,6 @@ export default function App() {
         <div class="workspace-layout">
           <ActivityBar />
           <TaskSidebar visible={sidebarVisible()} />
-          <FileBrowser visible={fileBrowserVisible()} />
           <Show when={getActiveSidebar()}>
             {(activeId) => {
               const plugin = () => getSessionPlugins().find((p) => p.manifest.id === activeId());
