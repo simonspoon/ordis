@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js";
+import { createSignal, batch } from "solid-js";
 import { createStore, produce } from "solid-js/store";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -320,31 +320,33 @@ export function swapPanes(paneIdA: string, paneIdB: string) {
 // --- Tab Management ---
 
 export function createTab(name: string, cwd: string): string {
-  saveCurrentTabState();
-
   const tabId = crypto.randomUUID();
   const paneId = crypto.randomUUID();
 
-  setPanes(paneId, {
-    id: paneId,
-    cwd,
-    paneType: "terminal",
-    activeSidebar: null,
-    activeOverlay: null,
-    pluginData: {},
+  batch(() => {
+    saveCurrentTabState();
+
+    setPanes(paneId, {
+      id: paneId,
+      cwd,
+      paneType: "terminal",
+      activeSidebar: null,
+      activeOverlay: null,
+      pluginData: {},
+    });
+
+    const newTab: WorkspaceTab = {
+      id: tabId,
+      name,
+      layout: { type: "leaf", paneId },
+      activePaneId: paneId,
+      zoomedPaneId: null,
+    };
+
+    setTabs(prev => [...prev, newTab]);
+    setActiveTabId(tabId);
+    loadTabState(newTab);
   });
-
-  const newTab: WorkspaceTab = {
-    id: tabId,
-    name,
-    layout: { type: "leaf", paneId },
-    activePaneId: paneId,
-    zoomedPaneId: null,
-  };
-
-  setTabs(prev => [...prev, newTab]);
-  setActiveTabId(tabId);
-  loadTabState(newTab);
 
   return tabId;
 }
@@ -354,9 +356,11 @@ export function switchTab(tabId: string): void {
   const target = tabs().find(t => t.id === tabId);
   if (!target) return;
 
-  saveCurrentTabState();
-  setActiveTabId(tabId);
-  loadTabState(target);
+  batch(() => {
+    saveCurrentTabState();
+    setActiveTabId(tabId);
+    loadTabState(target);
+  });
 }
 
 export function closeTab(tabId: string): void {

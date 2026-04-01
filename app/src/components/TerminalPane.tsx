@@ -269,7 +269,9 @@ export default function TerminalPane(props: Props) {
     });
 
     term.onResize(({ cols, rows }) => {
-      pty!.resize(cols, rows);
+      if (cols > 0 && rows > 0) {
+        pty!.resize(cols, rows);
+      }
     });
 
     pty.onExit(() => {
@@ -277,7 +279,9 @@ export default function TerminalPane(props: Props) {
     });
 
     resizeObserver = new ResizeObserver(() => {
-      if (fitAddon) fitAddon.fit();
+      if (fitAddon && containerRef.offsetWidth > 0 && containerRef.offsetHeight > 0) {
+        fitAddon.fit();
+      }
     });
     resizeObserver.observe(containerRef);
 
