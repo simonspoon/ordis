@@ -19,7 +19,6 @@ import PaneBar from "./components/PaneBar";
 import TerminalPane from "./components/TerminalPane";
 import SplitDivider from "./components/SplitDivider";
 import ToastContainer from "./components/Toast";
-import Settings from "./components/Settings";
 import CommandPalette from "./components/CommandPalette";
 import StatusBar from "./components/StatusBar";
 import ActivityBar from "./components/ActivityBar";
@@ -44,7 +43,7 @@ export default function App() {
       id: "view-settings",
       label: "Open Settings",
       shortcut: "Cmd+,",
-      action: () => setViewMode("settings"),
+      action: () => setViewMode("plugin-settings"),
     });
     registerCommand({
       id: "toggle-file-browser",
@@ -261,7 +260,7 @@ export default function App() {
       // Settings: Cmd+,
       if (e.key === "," && !e.shiftKey) {
         e.preventDefault();
-        setViewMode("settings");
+        setViewMode("plugin-settings");
         return;
       }
 
@@ -372,12 +371,6 @@ export default function App() {
           >
             Workspace
           </button>
-          <button
-            class={`titlebar-tab ${viewMode() === "settings" ? "titlebar-tab-active" : ""}`}
-            onClick={() => setViewMode("settings")}
-          >
-            Settings
-          </button>
           <For each={getWorkspacePlugins()}>
             {(plugin) => (
               <button
@@ -391,10 +384,6 @@ export default function App() {
           </For>
         </div>
       </div>
-
-      <Show when={viewMode() === "settings"}>
-        <Settings />
-      </Show>
 
       <For each={getWorkspacePlugins()}>
         {(plugin) => (

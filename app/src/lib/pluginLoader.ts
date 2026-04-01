@@ -15,6 +15,7 @@ const BUNDLED_PLUGINS: Array<[string, () => Promise<PluginModule>]> = [
   ["Artifact Viewer", () => import("../plugins/artifactViewerPlugin")],
   ["Project Management", () => import("../plugins/projectManagementPlugin")],
   ["Test Plugin", () => import("../plugins/testPlugin")],
+  ["Settings", () => import("../plugins/settingsPlugin")],
 ];
 
 export async function initializePlugins(): Promise<void> {

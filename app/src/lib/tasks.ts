@@ -44,7 +44,7 @@ export interface ProjectState {
   loading: boolean;
 }
 
-export type ViewMode = "dashboard" | "workspace" | "settings" | `plugin-${string}`;
+export type ViewMode = "dashboard" | "workspace" | `plugin-${string}`;
 export type DashboardView = "list" | "kanban" | "graph" | "timeline";
 export type StatusFilter = "all" | "todo" | "in-progress" | "done";
 

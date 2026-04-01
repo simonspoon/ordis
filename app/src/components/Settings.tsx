@@ -55,10 +55,16 @@ interface ClaudeSettings {
 
 type SettingsScope = "global" | "project";
 
+// Module-level signal so plugin commands can switch panels
+const [activePanel, setActivePanel] = createSignal<SettingsPanel>("permissions");
+
+export function navigateToPanel(panel: SettingsPanel) {
+  setActivePanel(panel);
+}
+
 // --- Component ---
 
 export default function Settings() {
-  const [activePanel, setActivePanel] = createSignal<SettingsPanel>("permissions");
   const [scope] = createSignal<SettingsScope>("global");
   const [settings, setSettings] = createSignal<ClaudeSettings>({});
   const [loading, setLoading] = createSignal(true);
