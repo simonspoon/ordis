@@ -8,7 +8,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { panes, setPaneCwd, closePane, createPane, activePaneId, setActivePaneId } from "../lib/store";
 import { toast } from "../lib/toast";
-import { parseToolOutput } from "../lib/artifactParser";
+import { createSessionEventBus } from "../lib/sessionEventBus";
 import { addArtifact } from "../lib/artifacts";
 import "@xterm/xterm/css/xterm.css";
 
@@ -31,6 +31,7 @@ export default function TerminalPane(props: Props) {
   let searchAddon: SearchAddon | null = null;
   let pty: ReturnType<typeof spawn> | null = null;
   let resizeObserver: ResizeObserver | null = null;
+  let bus: ReturnType<typeof createSessionEventBus> | null = null;
 
   const [gitInfo, setGitInfo] = createSignal<GitInfo | null>(null);
   const [searchOpen, setSearchOpen] = createSignal(false);
@@ -204,73 +205,62 @@ export default function TerminalPane(props: Props) {
       return;
     }
 
-    // Buffer for accumulating partial lines from PTY output
-    let lineBuf = "";
     // Pending snapshots: when a Read is detected, snapshot the file immediately
     // so the pre-edit content is captured BEFORE any subsequent edit lands on disk.
     const pendingSnapshots = new Map<string, string>();
     const SNAPSHOT_TTL_MS = 60_000;
     const snapshotTimers = new Map<string, ReturnType<typeof setTimeout>>();
-    // Reuse a single TextDecoder instead of allocating per event
-    const decoder = new TextDecoder();
+
+    bus = createSessionEventBus();
 
     pty.onData((data: Uint8Array) => {
       term!.write(new Uint8Array(data));
+      bus!.feed(data);
+    });
 
-      try {
-        // Feed output through artifact parser line by line
-        // Strip \r before splitting to prevent corrupted path extraction
-        const text = decoder.decode(new Uint8Array(data)).replace(/\r/g, "");
-        lineBuf += text;
-        const lines = lineBuf.split("\n");
-        // Keep the last (potentially incomplete) line in the buffer
-        lineBuf = lines.pop() || "";
+    bus.on("file_read", (e) => {
+      // Snapshot immediately — Claude reads before editing
+      invoke<{ content: string }>("snapshot_file", { path: e.path })
+        .then((snap) => {
+          pendingSnapshots.set(e.path, snap.content);
+          if (snapshotTimers.has(e.path)) clearTimeout(snapshotTimers.get(e.path));
+          snapshotTimers.set(e.path, setTimeout(() => {
+            pendingSnapshots.delete(e.path);
+            snapshotTimers.delete(e.path);
+          }, SNAPSHOT_TTL_MS));
+        })
+        .catch(() => { /* file may not exist yet */ });
 
-        for (const line of lines) {
-          const parsed = parseToolOutput(line);
-          if (parsed) {
-            const { filePath, operation } = parsed;
-            const ext = filePath.split(".").pop() || "";
-            const viewerType = mapExtToViewer(ext);
+      // Also add as artifact (old code added reads unconditionally)
+      const ext = e.path.split(".").pop() || "";
+      addArtifact({
+        filePath: e.path,
+        fileName: e.path.split("/").pop() || e.path,
+        operation: "read",
+        viewerType: mapExtToViewer(ext),
+      });
+    });
 
-            if (operation === "read") {
-              // Snapshot immediately on Read — Claude reads before editing
-              invoke<{ content: string }>("snapshot_file", { path: filePath })
-                .then((snap) => {
-                  pendingSnapshots.set(filePath, snap.content);
-                  // Clear stale snapshots after TTL
-                  if (snapshotTimers.has(filePath)) clearTimeout(snapshotTimers.get(filePath));
-                  snapshotTimers.set(filePath, setTimeout(() => {
-                    pendingSnapshots.delete(filePath);
-                    snapshotTimers.delete(filePath);
-                  }, SNAPSHOT_TTL_MS));
-                })
-                .catch(() => { /* file may not exist yet */ });
-            }
+    bus.on("file_written", (e) => {
+      const ext = e.path.split(".").pop() || "";
+      const viewerType = mapExtToViewer(ext);
+      const preEditContent = (e.operation === "edited")
+        ? pendingSnapshots.get(e.path)
+        : undefined;
 
-            // Always add the artifact unconditionally
-            const preEditContent = (operation === "edited")
-              ? pendingSnapshots.get(filePath)
-              : undefined;
+      addArtifact({
+        filePath: e.path,
+        fileName: e.path.split("/").pop() || e.path,
+        operation: e.operation,
+        viewerType,
+        preEditContent,
+      });
 
-            addArtifact({
-              filePath,
-              fileName: filePath.split("/").pop() || filePath,
-              operation,
-              viewerType,
-              preEditContent,
-            });
-
-            // Clean up used snapshot
-            if (operation === "edited" && pendingSnapshots.has(filePath)) {
-              if (snapshotTimers.has(filePath)) clearTimeout(snapshotTimers.get(filePath));
-              pendingSnapshots.delete(filePath);
-              snapshotTimers.delete(filePath);
-            }
-          }
-        }
-      } catch (e) {
-        console.error("[ArtifactParser] Error processing PTY output:", e);
+      // Clean up used snapshot
+      if (e.operation === "edited" && pendingSnapshots.has(e.path)) {
+        if (snapshotTimers.has(e.path)) clearTimeout(snapshotTimers.get(e.path));
+        pendingSnapshots.delete(e.path);
+        snapshotTimers.delete(e.path);
       }
     });
 
@@ -322,6 +312,7 @@ export default function TerminalPane(props: Props) {
 
   onCleanup(() => {
     resizeObserver?.disconnect();
+    bus?.destroy();
     if (pty) {
       try { pty.kill(); } catch { /* already dead */ }
     }
