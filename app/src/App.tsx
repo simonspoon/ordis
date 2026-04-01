@@ -523,22 +523,23 @@ export default function App() {
                 {(id) => {
                   const pos = () => positions()[id];
                   const isInActiveTab = () => !!pos();
-                  const hidden = () => {
-                    if (!isInActiveTab()) return true;
+                  const isZoomedOut = () => {
                     const p = pos();
-                    return p ? p.w === 0 && p.h === 0 : true;
+                    return p ? p.w === 0 && p.h === 0 : false;
                   };
+                  const hidden = () => !isInActiveTab() || isZoomedOut();
                   return (
                     <Show when={panes[id]}>
                       <div
                         class="pane-position"
                         style={{
-                          left: hidden() ? "0" : `${pos()!.x * 100}%`,
-                          top: hidden() ? "0" : `${pos()!.y * 100}%`,
-                          width: hidden() ? "0" : `${pos()!.w * 100}%`,
-                          height: hidden() ? "0" : `${pos()!.h * 100}%`,
+                          left: isInActiveTab() ? `${pos()!.x * 100}%` : "0",
+                          top: isInActiveTab() ? `${pos()!.y * 100}%` : "0",
+                          width: isInActiveTab() ? `${pos()!.w * 100}%` : "100%",
+                          height: isInActiveTab() ? `${pos()!.h * 100}%` : "100%",
                           visibility: hidden() ? "hidden" : "visible",
-                          overflow: hidden() ? "hidden" : "visible",
+                          "pointer-events": hidden() ? "none" : "auto",
+                          "z-index": hidden() ? "-1" : "auto",
                         }}
                       >
                         <TerminalPane paneId={id} />
