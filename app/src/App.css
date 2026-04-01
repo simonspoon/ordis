@@ -51,6 +51,69 @@ body {
   letter-spacing: 0.5px;
 }
 
+/* Workspace tabs */
+.workspace-tabs {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 0 8px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  min-height: 28px;
+  -webkit-app-region: no-drag;
+}
+
+.workspace-tab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 4px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+}
+.workspace-tab:hover {
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.workspace-tab-active {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.workspace-tab-close {
+  font-size: 10px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 2px;
+  border-radius: 2px;
+  line-height: 1;
+  margin-left: 2px;
+}
+.workspace-tab-close:hover {
+  color: var(--error);
+  background: rgba(229, 85, 85, 0.15);
+}
+
+.workspace-tab-add {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: 2px 8px;
+  cursor: pointer;
+  line-height: 1;
+}
+.workspace-tab-add:hover {
+  color: var(--text-secondary);
+}
+
 /* Pane bar */
 .pane-bar {
   display: flex;

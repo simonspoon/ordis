@@ -7,6 +7,7 @@ import {
   getLeafPaneIds, computeEffectivePositions, computeDividers,
   saveSession, restoreSession,
   saveLayout, loadLayout, listLayouts,
+  createTab, switchTab, closeTab, getTabs, getActiveTabId,
 } from "./lib/store";
 import { viewMode, setViewMode } from "./lib/tasks";
 import { toast } from "./lib/toast";
@@ -66,7 +67,7 @@ export default function App() {
     registerCommand({
       id: "clear-artifacts",
       label: "Clear Session Artifacts",
-      action: () => clearArtifacts(),
+      action: () => clearArtifacts(activePaneId()),
     });
     registerCommand({
       id: "open-file",
@@ -160,6 +161,46 @@ export default function App() {
         } catch (e) {
           toast.error(`Failed to save layout: ${e}`);
         }
+      },
+    });
+
+    registerCommand({
+      id: "new-tab",
+      label: "New Workspace Tab",
+      shortcut: "Cmd+T",
+      action: () => {
+        const active = activePaneId();
+        const cwd = panes[active]?.cwd || "";
+        const name = cwd.split("/").pop() || "New Tab";
+        createTab(name, cwd);
+      },
+    });
+    registerCommand({
+      id: "close-tab",
+      label: "Close Workspace Tab",
+      shortcut: "Cmd+Shift+W",
+      action: () => {
+        if (getTabs().length > 1) closeTab(getActiveTabId());
+      },
+    });
+    registerCommand({
+      id: "prev-tab",
+      label: "Previous Workspace Tab",
+      shortcut: "Cmd+Shift+[",
+      action: () => {
+        const allTabs = getTabs();
+        const idx = allTabs.findIndex(t => t.id === getActiveTabId());
+        if (idx > 0) switchTab(allTabs[idx - 1].id);
+      },
+    });
+    registerCommand({
+      id: "next-tab",
+      label: "Next Workspace Tab",
+      shortcut: "Cmd+Shift+]",
+      action: () => {
+        const allTabs = getTabs();
+        const idx = allTabs.findIndex(t => t.id === getActiveTabId());
+        if (idx < allTabs.length - 1) switchTab(allTabs[idx + 1].id);
       },
     });
 
@@ -297,6 +338,35 @@ export default function App() {
       // Sessions-only shortcuts
       if (viewMode() !== "sessions") return;
 
+      // Workspace tab shortcuts
+      if (e.key === "t" && !e.shiftKey) {
+        e.preventDefault();
+        const active = activePaneId();
+        const cwd = panes[active]?.cwd || "";
+        const name = cwd.split("/").pop() || "New Tab";
+        createTab(name, cwd);
+        return;
+      }
+      if (e.key === "w" && e.shiftKey) {
+        e.preventDefault();
+        if (getTabs().length > 1) closeTab(getActiveTabId());
+        return;
+      }
+      if (e.key === "[" && e.shiftKey) {
+        e.preventDefault();
+        const allTabs = getTabs();
+        const idx = allTabs.findIndex(t => t.id === getActiveTabId());
+        if (idx > 0) switchTab(allTabs[idx - 1].id);
+        return;
+      }
+      if (e.key === "]" && e.shiftKey) {
+        e.preventDefault();
+        const allTabs = getTabs();
+        const idx = allTabs.findIndex(t => t.id === getActiveTabId());
+        if (idx < allTabs.length - 1) switchTab(allTabs[idx + 1].id);
+        return;
+      }
+
       if (e.key === "Enter" && e.shiftKey) {
         e.preventDefault();
         toggleZoom();
@@ -306,7 +376,7 @@ export default function App() {
       } else if (e.key === "d" && e.shiftKey) {
         e.preventDefault();
         splitPane("horizontal");
-      } else if (e.key === "w") {
+      } else if (e.key === "w" && !e.shiftKey) {
         e.preventDefault();
         const active = activePaneId();
         if (active && getLeafPaneIds().length > 1) closePane(active);

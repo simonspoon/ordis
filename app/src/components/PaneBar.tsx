@@ -3,6 +3,7 @@ import {
   panes, activePaneId, setActivePaneId,
   closePane, splitPane, getLeafPaneIds,
   isZoomed, toggleZoom, swapPanes,
+  getTabs, getActiveTabId, createTab, switchTab, closeTab, renameTab,
 } from "../lib/store";
 import type { ViewerType } from "../lib/store";
 
@@ -70,70 +71,112 @@ export default function PaneBar() {
     setDragSourceId(null);
   };
 
+  const handleNewTab = () => {
+    const cwd = panes[activePaneId()]?.cwd || "";
+    const name = cwd.split("/").pop() || "New Tab";
+    createTab(name, cwd);
+  };
+
+  const handleRenameTab = (tabId: string, currentName: string) => {
+    const newName = window.prompt("Rename tab:", currentName);
+    if (newName?.trim()) renameTab(tabId, newName.trim());
+  };
+
   return (
-    <div class="pane-bar">
-      <div class="pane-tabs">
-        <For each={leafIds()}>
-          {(id) => {
-            const isActive = () => activePaneId() === id;
-            const isDragOver = () => dragOverId() === id;
-            const isDragSource = () => dragSourceId() === id;
-            return (
+    <>
+      <Show when={getTabs().length > 1}>
+        <div class="workspace-tabs">
+          <For each={getTabs()}>
+            {(tab) => (
               <button
-                class={`pane-tab ${isActive() ? "pane-tab-active" : ""} ${isDragOver() ? "pane-tab-drop-target" : ""} ${isDragSource() ? "pane-tab-dragging" : ""}`}
-                onClick={() => setActivePaneId(id)}
-                draggable={true}
-                onDragStart={(e) => onDragStart(id, e)}
-                onDragOver={(e) => onDragOver(id, e)}
-                onDragLeave={onDragLeave}
-                onDrop={(e) => onDrop(id, e)}
-                onDragEnd={onDragEnd}
+                class={`workspace-tab ${getActiveTabId() === tab.id ? "workspace-tab-active" : ""}`}
+                onClick={() => switchTab(tab.id)}
+                onDblClick={() => handleRenameTab(tab.id, tab.name)}
               >
-                  <Show when={typeIndicator(id)}>
-                  <span class="pane-tab-type">{typeIndicator(id)}</span>
-                </Show>
-                <span class="pane-tab-label">{label(id)}</span>
-                <Show when={leafIds().length > 1 || panes[id]?.paneType === "viewer"}>
+                <span>{tab.name}</span>
+                <Show when={getTabs().length > 1}>
                   <span
-                    class="pane-tab-close"
+                    class="workspace-tab-close"
                     onClick={(e) => {
                       e.stopPropagation();
-                      closePane(id);
+                      closeTab(tab.id);
                     }}
                   >
-                    x
+                    ×
                   </span>
                 </Show>
               </button>
-            );
-          }}
-        </For>
-      </div>
-      <div class="pane-actions">
-        <Show when={isZoomed()}>
-          <button
-            class="pane-action pane-zoom-indicator"
-            onClick={toggleZoom}
-            title="Unzoom (Cmd+Shift+Enter)"
-          >
-            ZOOMED
+            )}
+          </For>
+          <button class="workspace-tab-add" onClick={handleNewTab} title="New Tab (Cmd+T)">
+            +
           </button>
-        </Show>
-        <button
-          class="pane-action"
-          onClick={() => splitPane("vertical")}
-          title="Split vertical (Cmd+D)"
-        >
-          |
-        </button>
-        <button
-          class="pane-action"
-          onClick={() => splitPane("horizontal")}
-          title="Split horizontal (Cmd+Shift+D)"
-        >
-          --
-        </button>
+        </div>
+      </Show>
+      <div class="pane-bar">
+        <div class="pane-tabs">
+          <For each={leafIds()}>
+            {(id) => {
+              const isActive = () => activePaneId() === id;
+              const isDragOver = () => dragOverId() === id;
+              const isDragSource = () => dragSourceId() === id;
+              return (
+                <button
+                  class={`pane-tab ${isActive() ? "pane-tab-active" : ""} ${isDragOver() ? "pane-tab-drop-target" : ""} ${isDragSource() ? "pane-tab-dragging" : ""}`}
+                  onClick={() => setActivePaneId(id)}
+                  draggable={true}
+                  onDragStart={(e) => onDragStart(id, e)}
+                  onDragOver={(e) => onDragOver(id, e)}
+                  onDragLeave={onDragLeave}
+                  onDrop={(e) => onDrop(id, e)}
+                  onDragEnd={onDragEnd}
+                >
+                    <Show when={typeIndicator(id)}>
+                    <span class="pane-tab-type">{typeIndicator(id)}</span>
+                  </Show>
+                  <span class="pane-tab-label">{label(id)}</span>
+                  <Show when={leafIds().length > 1 || panes[id]?.paneType === "viewer"}>
+                    <span
+                      class="pane-tab-close"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        closePane(id);
+                      }}
+                    >
+                      x
+                    </span>
+                  </Show>
+                </button>
+              );
+            }}
+          </For>
+        </div>
+        <div class="pane-actions">
+          <Show when={isZoomed()}>
+            <button
+              class="pane-action pane-zoom-indicator"
+              onClick={toggleZoom}
+              title="Unzoom (Cmd+Shift+Enter)"
+            >
+              ZOOMED
+            </button>
+          </Show>
+          <button
+            class="pane-action"
+            onClick={() => splitPane("vertical")}
+            title="Split vertical (Cmd+D)"
+          >
+            |
+          </button>
+          <button
+            class="pane-action"
+            onClick={() => splitPane("horizontal")}
+            title="Split horizontal (Cmd+Shift+D)"
+          >
+            --
+          </button>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
