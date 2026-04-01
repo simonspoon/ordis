@@ -11,6 +11,7 @@ type PluginModule = {
 // Each entry: [human-readable name, () => import("../plugins/foo")]
 const BUNDLED_PLUGINS: Array<[string, () => Promise<PluginModule>]> = [
   // e.g. ["File Browser", () => import("../plugins/fileBrowser")],
+  ["Test Plugin", () => import("../plugins/testPlugin")],
 ];
 
 export async function initializePlugins(): Promise<void> {
