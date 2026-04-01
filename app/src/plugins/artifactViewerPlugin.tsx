@@ -8,6 +8,7 @@ import {
   type ArtifactOperation,
 } from "../lib/artifacts";
 import { registerSessionPlugin } from "../lib/plugins";
+import { activePaneId } from "../lib/store";
 
 const CodeViewer = lazy(() => import("../components/CodeViewer"));
 const MarkdownViewer = lazy(() => import("../components/MarkdownViewer"));
@@ -47,7 +48,7 @@ const ArtifactViewer: Component<{ visible: boolean }> = (props) => {
   const [error, setError] = createSignal<string | null>(null);
   const [showDiff, setShowDiff] = createSignal(false);
 
-  const artifacts = createMemo(() => getArtifacts());
+  const artifacts = createMemo(() => getArtifacts(activePaneId()));
 
   // Load file content when popover artifact changes
   createEffect(() => {
@@ -72,7 +73,7 @@ const ArtifactViewer: Component<{ visible: boolean }> = (props) => {
         setLoading(false);
 
         // If this is an edited file with preEditContent, compute diff
-        const preEdit = art.hasPreEditContent ? getPreEditContent(art.id) : undefined;
+        const preEdit = art.hasPreEditContent ? getPreEditContent(activePaneId(), art.id) : undefined;
         if (art.operation === "edited" && preEdit) {
           invoke<string>("compute_diff", {
             oldContent: preEdit,

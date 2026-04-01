@@ -233,7 +233,7 @@ export default function TerminalPane(props: Props) {
 
       // Also add as artifact (old code added reads unconditionally)
       const ext = e.path.split(".").pop() || "";
-      addArtifact({
+      addArtifact(props.paneId, {
         filePath: e.path,
         fileName: e.path.split("/").pop() || e.path,
         operation: "read",
@@ -248,7 +248,7 @@ export default function TerminalPane(props: Props) {
         ? pendingSnapshots.get(e.path)
         : undefined;
 
-      addArtifact({
+      addArtifact(props.paneId, {
         filePath: e.path,
         fileName: e.path.split("/").pop() || e.path,
         operation: e.operation,
