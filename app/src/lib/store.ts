@@ -49,12 +49,45 @@ export interface DividerInfo {
   length: number;
 }
 
+export interface WorkspaceTab {
+  id: string;
+  name: string;
+  layout: LayoutNode | null;
+  activePaneId: string;
+  zoomedPaneId: string | null;
+}
+
 // --- State ---
 
 export const [panes, setPanes] = createStore<Record<string, PaneState>>({});
 export const [activePaneId, setActivePaneId] = createSignal("");
 export const [layout, setLayout] = createSignal<LayoutNode | null>(null);
 export const [zoomedPaneId, setZoomedPaneId] = createSignal<string | null>(null);
+
+const defaultTabId = crypto.randomUUID();
+export const [tabs, setTabs] = createSignal<WorkspaceTab[]>([
+  { id: defaultTabId, name: "Main", layout: null, activePaneId: "", zoomedPaneId: null },
+]);
+export const [activeTabId, setActiveTabId] = createSignal(defaultTabId);
+
+// --- Tab Sync ---
+
+function saveCurrentTabState(): void {
+  const tabId = activeTabId();
+  setTabs(prev =>
+    prev.map(t =>
+      t.id === tabId
+        ? { ...t, layout: layout(), activePaneId: activePaneId(), zoomedPaneId: zoomedPaneId() }
+        : t,
+    ),
+  );
+}
+
+function loadTabState(tab: WorkspaceTab): void {
+  setLayout(tab.layout);
+  setActivePaneId(tab.activePaneId);
+  setZoomedPaneId(tab.zoomedPaneId);
+}
 
 // --- Derived ---
 
@@ -284,6 +317,84 @@ export function swapPanes(paneIdA: string, paneIdB: string) {
   setLayout((prev) => (prev ? swapLeaves(prev, paneIdA, paneIdB) : prev));
 }
 
+// --- Tab Management ---
+
+export function createTab(name: string, cwd: string): string {
+  saveCurrentTabState();
+
+  const tabId = crypto.randomUUID();
+  const paneId = crypto.randomUUID();
+
+  setPanes(paneId, {
+    id: paneId,
+    cwd,
+    paneType: "terminal",
+    activeSidebar: null,
+    activeOverlay: null,
+    pluginData: {},
+  });
+
+  const newTab: WorkspaceTab = {
+    id: tabId,
+    name,
+    layout: { type: "leaf", paneId },
+    activePaneId: paneId,
+    zoomedPaneId: null,
+  };
+
+  setTabs(prev => [...prev, newTab]);
+  setActiveTabId(tabId);
+  loadTabState(newTab);
+
+  return tabId;
+}
+
+export function switchTab(tabId: string): void {
+  if (tabId === activeTabId()) return;
+  const target = tabs().find(t => t.id === tabId);
+  if (!target) return;
+
+  saveCurrentTabState();
+  setActiveTabId(tabId);
+  loadTabState(target);
+}
+
+export function closeTab(tabId: string): void {
+  const allTabs = tabs();
+  if (allTabs.length <= 1) return;
+
+  const tabToClose = allTabs.find(t => t.id === tabId);
+  if (!tabToClose) return;
+
+  // Remove all panes owned by this tab
+  const leafIds = getLeafPaneIds(tabToClose.layout);
+  for (const id of leafIds) {
+    setPanes(produce(p => { delete p[id]; }));
+  }
+
+  // If closing active tab, switch to adjacent first
+  if (tabId === activeTabId()) {
+    const idx = allTabs.findIndex(t => t.id === tabId);
+    const nextTab = allTabs[idx + 1] || allTabs[idx - 1];
+    setActiveTabId(nextTab.id);
+    loadTabState(nextTab);
+  }
+
+  setTabs(prev => prev.filter(t => t.id !== tabId));
+}
+
+export function renameTab(tabId: string, name: string): void {
+  setTabs(prev => prev.map(t => (t.id === tabId ? { ...t, name } : t)));
+}
+
+export function getActiveTabId(): string {
+  return activeTabId();
+}
+
+export function getTabs(): WorkspaceTab[] {
+  return tabs();
+}
+
 // --- Session Persistence ---
 
 interface SessionPaneData {
@@ -301,29 +412,42 @@ interface SessionData {
   layout: LayoutNode | null;
   panes: Record<string, SessionPaneData>;
   activePaneId: string;
+  tabs?: WorkspaceTab[];
+  activeTabId?: string;
 }
 
 export async function saveSession(): Promise<void> {
-  const currentLayout = layout();
-  const leafIds = getLeafPaneIds(currentLayout);
+  // Ensure active tab has latest signal values
+  saveCurrentTabState();
+
+  const allTabs = tabs();
+
+  // Collect pane data for all tabs
   const paneData: Record<string, SessionPaneData> = {};
-  for (const id of leafIds) {
-    const p = panes[id];
-    if (p) paneData[id] = {
-      cwd: p.cwd,
-      paneType: p.paneType,
-      viewerType: p.viewerType,
-      filePath: p.filePath,
-      fileLabel: p.fileLabel,
-      activeSidebar: p.activeSidebar,
-      activeOverlay: p.activeOverlay,
-      pluginData: p.pluginData,
-    };
+  for (const tab of allTabs) {
+    const leafIds = getLeafPaneIds(tab.layout);
+    for (const id of leafIds) {
+      const p = panes[id];
+      if (p) paneData[id] = {
+        cwd: p.cwd,
+        paneType: p.paneType,
+        viewerType: p.viewerType,
+        filePath: p.filePath,
+        fileLabel: p.fileLabel,
+        activeSidebar: p.activeSidebar,
+        activeOverlay: p.activeOverlay,
+        pluginData: p.pluginData,
+      };
+    }
   }
+
+  // Backward-compatible: top-level layout/activePaneId from the active tab
   const data: SessionData = {
-    layout: currentLayout,
+    layout: layout(),
     panes: paneData,
     activePaneId: activePaneId(),
+    tabs: allTabs,
+    activeTabId: activeTabId(),
   };
   try {
     await invoke("save_session", { data: JSON.stringify(data) });
@@ -337,54 +461,125 @@ export async function restoreSession(): Promise<boolean> {
     const raw = await invoke<string | null>("load_session");
     if (!raw) return false;
     const data: SessionData = JSON.parse(raw);
-    if (!data.layout) return false;
 
-    // Validate: ensure all leaf pane IDs have corresponding pane data
-    const leafIds = getLeafPaneIds(data.layout);
-    if (leafIds.length === 0) return false;
-
-    // Skip viewer panes (now handled by overlay plugin) and remove from layout
-    const skippedIds: string[] = [];
-    for (const id of leafIds) {
-      const paneInfo = data.panes[id];
-      if (paneInfo?.paneType === "viewer") {
-        skippedIds.push(id);
-        continue;
-      }
-      const cwd = paneInfo?.cwd || "";
-      setPanes(id, {
-        id,
-        cwd,
-        paneType: paneInfo?.paneType || "terminal",
-        viewerType: paneInfo?.viewerType,
-        filePath: paneInfo?.filePath,
-        fileLabel: paneInfo?.fileLabel,
-        activeSidebar: paneInfo?.activeSidebar ?? null,
-        activeOverlay: paneInfo?.activeOverlay ?? null,
-        pluginData: paneInfo?.pluginData ? { ...paneInfo.pluginData } : {},
-      });
+    if (data.tabs && data.tabs.length > 0) {
+      // New format: restore all tabs
+      return restoreSessionTabs(data);
     }
 
-    // Remove skipped viewer panes from layout
-    let cleanedLayout: LayoutNode | null = data.layout;
-    for (const id of skippedIds) {
-      cleanedLayout = cleanedLayout ? removeLeaf(cleanedLayout, id) : null;
-    }
-    if (!cleanedLayout) return false;
-
-    const remainingIds = getLeafPaneIds(cleanedLayout);
-    if (remainingIds.length === 0) return false;
-
-    setLayout(cleanedLayout);
-    if (data.activePaneId && remainingIds.includes(data.activePaneId)) {
-      setActivePaneId(data.activePaneId);
-    } else {
-      setActivePaneId(remainingIds[0]);
-    }
-    return true;
+    // Legacy format: wrap in single default tab
+    return restoreSessionLegacy(data);
   } catch {
     return false;
   }
+}
+
+function restoreTabLayout(
+  tabLayout: LayoutNode | null,
+  paneData: Record<string, SessionPaneData>,
+): { layout: LayoutNode | null; activePaneIds: string[] } {
+  if (!tabLayout) return { layout: null, activePaneIds: [] };
+
+  const leafIds = getLeafPaneIds(tabLayout);
+  if (leafIds.length === 0) return { layout: null, activePaneIds: [] };
+
+  const skippedIds: string[] = [];
+  for (const id of leafIds) {
+    const paneInfo = paneData[id];
+    if (paneInfo?.paneType === "viewer") {
+      skippedIds.push(id);
+      continue;
+    }
+    const cwd = paneInfo?.cwd || "";
+    setPanes(id, {
+      id,
+      cwd,
+      paneType: paneInfo?.paneType || "terminal",
+      viewerType: paneInfo?.viewerType,
+      filePath: paneInfo?.filePath,
+      fileLabel: paneInfo?.fileLabel,
+      activeSidebar: paneInfo?.activeSidebar ?? null,
+      activeOverlay: paneInfo?.activeOverlay ?? null,
+      pluginData: paneInfo?.pluginData ? { ...paneInfo.pluginData } : {},
+    });
+  }
+
+  let cleanedLayout: LayoutNode | null = tabLayout;
+  for (const id of skippedIds) {
+    cleanedLayout = cleanedLayout ? removeLeaf(cleanedLayout, id) : null;
+  }
+
+  const remainingIds = cleanedLayout ? getLeafPaneIds(cleanedLayout) : [];
+  return { layout: cleanedLayout, activePaneIds: remainingIds };
+}
+
+function restoreSessionTabs(data: SessionData): boolean {
+  const restoredTabs: WorkspaceTab[] = [];
+
+  for (const tab of data.tabs!) {
+    const { layout: cleanedLayout, activePaneIds } = restoreTabLayout(
+      tab.layout,
+      data.panes,
+    );
+    if (!cleanedLayout || activePaneIds.length === 0) continue;
+
+    const restoredActivePaneId =
+      tab.activePaneId && activePaneIds.includes(tab.activePaneId)
+        ? tab.activePaneId
+        : activePaneIds[0];
+
+    restoredTabs.push({
+      id: tab.id,
+      name: tab.name,
+      layout: cleanedLayout,
+      activePaneId: restoredActivePaneId,
+      zoomedPaneId: null,
+    });
+  }
+
+  if (restoredTabs.length === 0) return false;
+
+  setTabs(restoredTabs);
+
+  // Find the active tab to restore
+  const savedActiveTabId = data.activeTabId;
+  const activeTab =
+    restoredTabs.find(t => t.id === savedActiveTabId) || restoredTabs[0];
+  setActiveTabId(activeTab.id);
+  loadTabState(activeTab);
+
+  return true;
+}
+
+function restoreSessionLegacy(data: SessionData): boolean {
+  if (!data.layout) return false;
+
+  const { layout: cleanedLayout, activePaneIds } = restoreTabLayout(
+    data.layout,
+    data.panes,
+  );
+  if (!cleanedLayout || activePaneIds.length === 0) return false;
+
+  const restoredActivePaneId =
+    data.activePaneId && activePaneIds.includes(data.activePaneId)
+      ? data.activePaneId
+      : activePaneIds[0];
+
+  // Wrap in a single default tab
+  const tabId = crypto.randomUUID();
+  const tab: WorkspaceTab = {
+    id: tabId,
+    name: "Main",
+    layout: cleanedLayout,
+    activePaneId: restoredActivePaneId,
+    zoomedPaneId: null,
+  };
+
+  setTabs([tab]);
+  setActiveTabId(tabId);
+  loadTabState(tab);
+
+  return true;
 }
 
 // --- Layouts ---
@@ -482,6 +677,10 @@ export async function loadLayout(name: string): Promise<boolean> {
   setLayout(cleanedLayout);
   setZoomedPaneId(null);
   setActivePaneId(remainingIds[0]);
+
+  // Keep the active tab's stored state in sync
+  saveCurrentTabState();
+
   return true;
 }
 
