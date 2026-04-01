@@ -2,6 +2,7 @@ import { createSignal } from "solid-js";
 import type { Component } from "solid-js";
 import { registerCommand } from "./commands";
 import { setViewMode } from "./tasks";
+import { getActivePaneSidebar, setActivePaneSidebar, getActivePaneOverlay, setActivePaneOverlay } from "./store";
 
 // --- Types ---
 
@@ -32,8 +33,6 @@ export type WorkspacePlugin = {
 
 const [sessionPlugins, setSessionPlugins] = createSignal<SessionPlugin[]>([]);
 const [workspacePlugins, setWorkspacePlugins] = createSignal<WorkspacePlugin[]>([]);
-const [activeSessionSidebar, setActiveSessionSidebar] = createSignal<string | null>(null);
-const [activeSessionOverlay, setActiveSessionOverlay] = createSignal<string | null>(null);
 
 // --- Actions ---
 
@@ -100,36 +99,36 @@ export function getOverlayPlugins(): SessionPlugin[] {
 }
 
 export function getActiveSidebar(): string | null {
-  return activeSessionSidebar();
+  return getActivePaneSidebar();
 }
 
 export function getActiveOverlay(): string | null {
-  return activeSessionOverlay();
+  return getActivePaneOverlay();
 }
 
 export function getSessionPluginVisibility(id: string): boolean {
   const plugin = sessionPlugins().find((p) => p.manifest.id === id);
   if (!plugin) return false;
   if (plugin.manifest.type === "sidebar") {
-    return activeSessionSidebar() === id;
+    return getActivePaneSidebar() === id;
   }
-  return activeSessionOverlay() === id;
+  return getActivePaneOverlay() === id;
 }
 
 export function toggleSessionPlugin(id: string) {
   const plugin = sessionPlugins().find((p) => p.manifest.id === id);
   if (!plugin) return;
   if (plugin.manifest.type === "sidebar") {
-    setActiveSessionSidebar((prev) => (prev === id ? null : id));
+    setActivePaneSidebar(getActivePaneSidebar() === id ? null : id);
   } else {
-    setActiveSessionOverlay((prev) => (prev === id ? null : id));
+    setActivePaneOverlay(getActivePaneOverlay() === id ? null : id);
   }
 }
 
 export function showSessionOverlay(id: string) {
-  setActiveSessionOverlay(id);
+  setActivePaneOverlay(id);
 }
 
 export function dismissSessionOverlay() {
-  setActiveSessionOverlay(null);
+  setActivePaneOverlay(null);
 }

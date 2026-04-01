@@ -17,6 +17,9 @@ export interface PaneState {
   viewerType?: ViewerType;
   filePath?: string;
   fileLabel?: string;
+  activeSidebar?: string | null;
+  activeOverlay?: string | null;
+  pluginData?: Record<string, unknown>;
 }
 
 export type LayoutNode =
@@ -141,11 +144,43 @@ export function isZoomed(): boolean {
   return zoomedPaneId() !== null;
 }
 
+// --- Per-Pane Plugin State ---
+
+export function getActivePaneSidebar(): string | null {
+  const id = activePaneId();
+  return id ? panes[id]?.activeSidebar ?? null : null;
+}
+
+export function setActivePaneSidebar(value: string | null): void {
+  const id = activePaneId();
+  if (id) setPanes(id, "activeSidebar", value);
+}
+
+export function getActivePaneOverlay(): string | null {
+  const id = activePaneId();
+  return id ? panes[id]?.activeOverlay ?? null : null;
+}
+
+export function setActivePaneOverlay(value: string | null): void {
+  const id = activePaneId();
+  if (id) setPanes(id, "activeOverlay", value);
+}
+
+export function getActivePanePluginData(): Record<string, unknown> {
+  const id = activePaneId();
+  return id ? panes[id]?.pluginData ?? {} : {};
+}
+
+export function setActivePanePluginData(data: Record<string, unknown>): void {
+  const id = activePaneId();
+  if (id) setPanes(id, "pluginData", { ...data });
+}
+
 // --- Operations ---
 
 export function createPane(cwd: string, opts?: { agent?: string; effort?: string; prompt?: string }): string {
   const id = crypto.randomUUID();
-  setPanes(id, { id, cwd, paneType: "terminal", agent: opts?.agent, effort: opts?.effort, prompt: opts?.prompt });
+  setPanes(id, { id, cwd, paneType: "terminal", agent: opts?.agent, effort: opts?.effort, prompt: opts?.prompt, activeSidebar: null, activeOverlay: null, pluginData: {} });
   if (!layout()) setLayout({ type: "leaf", paneId: id });
   setActivePaneId(id);
   return id;
@@ -173,7 +208,7 @@ export function createViewerPane(filePath: string, viewerType: ViewerType, cwd?:
   const id = crypto.randomUUID();
   const dir = cwd || filePath.substring(0, filePath.lastIndexOf("/")) || "/";
   const fileName = filePath.substring(filePath.lastIndexOf("/") + 1);
-  setPanes(id, { id, cwd: dir, paneType: "viewer", viewerType, filePath, fileLabel: fileName });
+  setPanes(id, { id, cwd: dir, paneType: "viewer", viewerType, filePath, fileLabel: fileName, activeSidebar: null, activeOverlay: null, pluginData: {} });
 
   const currentLayout = layout();
   if (!currentLayout) {
@@ -213,7 +248,7 @@ export function splitPane(direction: "horizontal" | "vertical") {
   const cwd = panes[active]?.cwd || "";
   const newId = crypto.randomUUID();
   const splitId = crypto.randomUUID();
-  setPanes(newId, { id: newId, cwd, paneType: "terminal" });
+  setPanes(newId, { id: newId, cwd, paneType: "terminal", activeSidebar: null, activeOverlay: null, pluginData: {} });
   setLayout((prev) =>
     prev
       ? replaceLeaf(prev, active, {
@@ -257,6 +292,9 @@ interface SessionPaneData {
   viewerType?: ViewerType;
   filePath?: string;
   fileLabel?: string;
+  activeSidebar?: string | null;
+  activeOverlay?: string | null;
+  pluginData?: Record<string, unknown>;
 }
 
 interface SessionData {
@@ -277,6 +315,9 @@ export async function saveSession(): Promise<void> {
       viewerType: p.viewerType,
       filePath: p.filePath,
       fileLabel: p.fileLabel,
+      activeSidebar: p.activeSidebar,
+      activeOverlay: p.activeOverlay,
+      pluginData: p.pluginData,
     };
   }
   const data: SessionData = {
@@ -318,6 +359,9 @@ export async function restoreSession(): Promise<boolean> {
         viewerType: paneInfo?.viewerType,
         filePath: paneInfo?.filePath,
         fileLabel: paneInfo?.fileLabel,
+        activeSidebar: paneInfo?.activeSidebar ?? null,
+        activeOverlay: paneInfo?.activeOverlay ?? null,
+        pluginData: paneInfo?.pluginData ? { ...paneInfo.pluginData } : {},
       });
     }
 
@@ -352,6 +396,9 @@ interface LayoutPaneData {
   viewerType?: ViewerType;
   filePath?: string;
   fileLabel?: string;
+  activeSidebar?: string | null;
+  activeOverlay?: string | null;
+  pluginData?: Record<string, unknown>;
 }
 
 interface LayoutData {
@@ -372,6 +419,9 @@ function captureLayout(): LayoutData {
       viewerType: p.viewerType,
       filePath: p.filePath,
       fileLabel: p.fileLabel,
+      activeSidebar: p.activeSidebar,
+      activeOverlay: p.activeOverlay,
+      pluginData: p.pluginData,
     };
   }
   return { layout: currentLayout, panes: paneData };
@@ -413,6 +463,9 @@ export async function loadLayout(name: string): Promise<boolean> {
       viewerType: paneInfo?.viewerType,
       filePath: paneInfo?.filePath,
       fileLabel: paneInfo?.fileLabel,
+      activeSidebar: paneInfo?.activeSidebar ?? null,
+      activeOverlay: paneInfo?.activeOverlay ?? null,
+      pluginData: paneInfo?.pluginData ? { ...paneInfo.pluginData } : {},
     });
   }
 
