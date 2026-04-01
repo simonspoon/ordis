@@ -3386,6 +3386,53 @@ body {
   scrollbar-color: var(--border) transparent;
 }
 
+/* --- Activity Bar --- */
+
+.activity-bar {
+  display: flex;
+  flex-direction: column;
+  width: 40px;
+  min-width: 40px;
+  background: var(--bg-primary);
+  border-right: 1px solid var(--border);
+  flex-shrink: 0;
+  padding-top: 4px;
+  gap: 2px;
+  align-items: center;
+}
+
+.activity-bar-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 16px;
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 0;
+  line-height: 1;
+}
+
+.activity-bar-icon:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.activity-bar-icon-active {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--accent);
+  border-left: 2px solid var(--accent);
+  border-radius: 0 4px 4px 0;
+}
+
+.activity-bar-icon-active:hover {
+  color: var(--accent);
+}
+
 /* --- Plugin Slots --- */
 
 .plugin-sidebar {
@@ -3398,7 +3445,6 @@ body {
   background: var(--bg-secondary);
   overflow: hidden;
   flex-shrink: 0;
-  transition: width 0.15s ease;
 }
 
 .plugin-sidebar-left {
@@ -3409,22 +3455,40 @@ body {
   border-left: 1px solid var(--border);
 }
 
-.plugin-sidebar-hidden {
-  width: 0;
-  min-width: 0;
-  border: none;
-  overflow: hidden;
-}
-
-.plugin-overlay {
-  position: fixed;
+.plugin-overlay-pane {
+  position: absolute;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 1000;
+  z-index: 100;
+  background: var(--bg-secondary);
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+
+.plugin-overlay-dismiss {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  font-size: 16px;
+  cursor: pointer;
+  border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.5);
+  z-index: 101;
+  padding: 0;
+  line-height: 1;
+}
+
+.plugin-overlay-dismiss:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: var(--text-primary);
 }

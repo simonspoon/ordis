@@ -26,7 +26,8 @@ export type WorkspacePlugin = {
 
 const [sessionPlugins, setSessionPlugins] = createSignal<SessionPlugin[]>([]);
 const [workspacePlugins, setWorkspacePlugins] = createSignal<WorkspacePlugin[]>([]);
-const [pluginVisibility, setPluginVisibility] = createSignal<Record<string, boolean>>({});
+const [activeSessionSidebar, setActiveSessionSidebar] = createSignal<string | null>(null);
+const [activeSessionOverlay, setActiveSessionOverlay] = createSignal<string | null>(null);
 
 // --- Actions ---
 
@@ -84,10 +85,45 @@ export function getWorkspacePlugins(): WorkspacePlugin[] {
   return workspacePlugins();
 }
 
+export function getSidebarPlugins(): SessionPlugin[] {
+  return sessionPlugins().filter((p) => p.manifest.type === "sidebar");
+}
+
+export function getOverlayPlugins(): SessionPlugin[] {
+  return sessionPlugins().filter((p) => p.manifest.type === "overlay");
+}
+
+export function getActiveSidebar(): string | null {
+  return activeSessionSidebar();
+}
+
+export function getActiveOverlay(): string | null {
+  return activeSessionOverlay();
+}
+
 export function getSessionPluginVisibility(id: string): boolean {
-  return pluginVisibility()[id] ?? false;
+  const plugin = sessionPlugins().find((p) => p.manifest.id === id);
+  if (!plugin) return false;
+  if (plugin.manifest.type === "sidebar") {
+    return activeSessionSidebar() === id;
+  }
+  return activeSessionOverlay() === id;
 }
 
 export function toggleSessionPlugin(id: string) {
-  setPluginVisibility((prev) => ({ ...prev, [id]: !prev[id] }));
+  const plugin = sessionPlugins().find((p) => p.manifest.id === id);
+  if (!plugin) return;
+  if (plugin.manifest.type === "sidebar") {
+    setActiveSessionSidebar((prev) => (prev === id ? null : id));
+  } else {
+    setActiveSessionOverlay((prev) => (prev === id ? null : id));
+  }
+}
+
+export function showSessionOverlay(id: string) {
+  setActiveSessionOverlay(id);
+}
+
+export function dismissSessionOverlay() {
+  setActiveSessionOverlay(null);
 }

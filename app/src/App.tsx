@@ -13,7 +13,7 @@ import { viewMode, setViewMode, setDashboardView } from "./lib/tasks";
 import { toast } from "./lib/toast";
 import { registerCommand, togglePalette, paletteOpen, closePalette } from "./lib/commands";
 import { artifactSidebarVisible, toggleArtifactSidebar, clearArtifacts, type ArtifactEntry } from "./lib/artifacts";
-import { getSessionPlugins, getWorkspacePlugins, getSessionPluginVisibility } from "./lib/plugins";
+import { getSessionPlugins, getWorkspacePlugins, getActiveSidebar, getActiveOverlay, dismissSessionOverlay } from "./lib/plugins";
 import { initializePlugins } from "./lib/pluginLoader";
 import PaneBar from "./components/PaneBar";
 import TerminalPane from "./components/TerminalPane";
@@ -28,6 +28,7 @@ import ToastContainer from "./components/Toast";
 import Settings from "./components/Settings";
 import CommandPalette from "./components/CommandPalette";
 import StatusBar from "./components/StatusBar";
+import ActivityBar from "./components/ActivityBar";
 import "./App.css";
 
 export default function App() {
@@ -449,15 +450,26 @@ export default function App() {
       <div style={{ display: viewMode() === "workspace" ? "contents" : "none" }}>
         <PaneBar />
         <div class="workspace-layout">
+          <ActivityBar />
           <TaskSidebar visible={sidebarVisible()} />
           <FileBrowser visible={fileBrowserVisible()} />
-          <For each={getSessionPlugins().filter(p => p.manifest.type === 'sidebar' && p.manifest.defaultSide !== 'right')}>
-            {(plugin) => (
-              <div class={`plugin-sidebar plugin-sidebar-left ${getSessionPluginVisibility(plugin.manifest.id) ? '' : 'plugin-sidebar-hidden'}`}>
-                <plugin.component visible={getSessionPluginVisibility(plugin.manifest.id)} />
-              </div>
-            )}
-          </For>
+          <Show when={getActiveSidebar()}>
+            {(activeId) => {
+              const plugin = () => getSessionPlugins().find((p) => p.manifest.id === activeId());
+              return (
+                <Show when={plugin()}>
+                  {(p) => {
+                    const Comp = p().component;
+                    return (
+                      <div class={`plugin-sidebar plugin-sidebar-${p().manifest.defaultSide || "left"}`}>
+                        <Comp visible={true} />
+                      </div>
+                    );
+                  }}
+                </Show>
+              );
+            }}
+          </Show>
           <div class="terminal-container">
             <Show
               when={leafIds().length > 0}
@@ -509,18 +521,29 @@ export default function App() {
                 {(info) => <SplitDivider info={info} />}
               </For>
             </Show>
+            <Show when={getActiveOverlay()}>
+              {(activeId) => {
+                const plugin = () => getSessionPlugins().find((p) => p.manifest.id === activeId());
+                return (
+                  <Show when={plugin()}>
+                    {(p) => {
+                      const Comp = p().component;
+                      return (
+                        <div class="plugin-overlay-pane">
+                          <button class="plugin-overlay-dismiss" onClick={dismissSessionOverlay}>x</button>
+                          <Comp visible={true} />
+                        </div>
+                      );
+                    }}
+                  </Show>
+                );
+              }}
+            </Show>
           </div>
           <ArtifactSidebar
             visible={artifactSidebarVisible()}
             onSelect={(artifact) => setPopoverArtifact(artifact)}
           />
-          <For each={getSessionPlugins().filter(p => p.manifest.type === 'sidebar' && p.manifest.defaultSide === 'right')}>
-            {(plugin) => (
-              <div class={`plugin-sidebar plugin-sidebar-right ${getSessionPluginVisibility(plugin.manifest.id) ? '' : 'plugin-sidebar-hidden'}`}>
-                <plugin.component visible={getSessionPluginVisibility(plugin.manifest.id)} />
-              </div>
-            )}
-          </For>
         </div>
       </div>
 
@@ -530,15 +553,6 @@ export default function App() {
         artifact={popoverArtifact()}
         onClose={() => setPopoverArtifact(null)}
       />
-      <For each={getSessionPlugins().filter(p => p.manifest.type === 'overlay')}>
-        {(plugin) => (
-          <Show when={getSessionPluginVisibility(plugin.manifest.id)}>
-            <div class="plugin-overlay">
-              <plugin.component visible={true} />
-            </div>
-          </Show>
-        )}
-      </For>
       <CommandPalette />
       <ToastContainer />
     </div>
