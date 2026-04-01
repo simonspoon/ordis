@@ -370,21 +370,24 @@ export function closeTab(tabId: string): void {
   const tabToClose = allTabs.find(t => t.id === tabId);
   if (!tabToClose) return;
 
-  // Remove all panes owned by this tab
   const leafIds = getLeafPaneIds(tabToClose.layout);
-  for (const id of leafIds) {
-    setPanes(produce(p => { delete p[id]; }));
-  }
 
-  // If closing active tab, switch to adjacent first
-  if (tabId === activeTabId()) {
-    const idx = allTabs.findIndex(t => t.id === tabId);
-    const nextTab = allTabs[idx + 1] || allTabs[idx - 1];
-    setActiveTabId(nextTab.id);
-    loadTabState(nextTab);
-  }
+  batch(() => {
+    // Remove all panes owned by this tab
+    for (const id of leafIds) {
+      setPanes(produce(p => { delete p[id]; }));
+    }
 
-  setTabs(prev => prev.filter(t => t.id !== tabId));
+    // If closing active tab, switch to adjacent first
+    if (tabId === activeTabId()) {
+      const idx = allTabs.findIndex(t => t.id === tabId);
+      const nextTab = allTabs[idx + 1] || allTabs[idx - 1];
+      setActiveTabId(nextTab.id);
+      loadTabState(nextTab);
+    }
+
+    setTabs(prev => prev.filter(t => t.id !== tabId));
+  });
 }
 
 export function renameTab(tabId: string, name: string): void {
