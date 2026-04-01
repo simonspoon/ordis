@@ -29,6 +29,15 @@ describe("stripAnsi", () => {
       "Created /src/foo.ts"
     );
   });
+
+  it("strips DEC private mode sequences", () => {
+    expect(stripAnsi("\x1b[?25lhello\x1b[?25h")).toBe("hello");
+    expect(stripAnsi("\x1b[?2004htext\x1b[?2004l")).toBe("text");
+  });
+
+  it("strips OSC sequences", () => {
+    expect(stripAnsi("\x1b]0;title\x07content")).toBe("content");
+  });
 });
 
 // --- parseToolOutput: Write/Create detection ---
@@ -163,6 +172,85 @@ describe("parseToolOutput — screenshot operations", () => {
     const result = parseToolOutput("screenshot log at /Users/me/log.txt");
     // Should match as created (if 'Wrote' pattern) or null — NOT as screenshot
     expect(result?.operation).not.toBe("screenshot");
+  });
+});
+
+// --- parseToolOutput: Claude Code v2 tool header format ---
+
+describe("parseToolOutput — v2 tool header format", () => {
+  it("detects Write(path) as created", () => {
+    const result = parseToolOutput("Write(/Users/me/project/file.md)");
+    expect(result).toEqual({
+      filePath: "/Users/me/project/file.md",
+      operation: "created",
+    });
+  });
+
+  it("detects Read(path) with source extension as read", () => {
+    const result = parseToolOutput("Read(/Users/me/project/src/index.ts)");
+    expect(result).toEqual({
+      filePath: "/Users/me/project/src/index.ts",
+      operation: "read",
+    });
+  });
+
+  it("detects Edit(path) as edited", () => {
+    const result = parseToolOutput("Edit(/Users/me/project/src/lib.rs)");
+    expect(result).toEqual({
+      filePath: "/Users/me/project/src/lib.rs",
+      operation: "edited",
+    });
+  });
+
+  it("detects Write with bullet prefix", () => {
+    const result = parseToolOutput("⏺ Write(/Users/me/project/file.md)");
+    expect(result).toEqual({
+      filePath: "/Users/me/project/file.md",
+      operation: "created",
+    });
+  });
+
+  it("detects Write with ANSI-wrapped bullet prefix", () => {
+    const result = parseToolOutput(
+      "\x1b[1m⏺\x1b[0m Write(/Users/me/project/file.md)"
+    );
+    expect(result).toEqual({
+      filePath: "/Users/me/project/file.md",
+      operation: "created",
+    });
+  });
+
+  it("rejects Read(path) without source extension", () => {
+    const result = parseToolOutput("Read(/Users/me/project/mybinary)");
+    expect(result).toBeNull();
+  });
+
+  it("detects Write(.svg) as created, not screenshot", () => {
+    const result = parseToolOutput("Write(/tmp/test/image.svg)");
+    expect(result).toEqual({
+      filePath: "/tmp/test/image.svg",
+      operation: "created",
+    });
+  });
+
+  it("detects Write with non-⏺ bullet characters", () => {
+    // Claude Code may use different Unicode bullet characters across versions
+    for (const bullet of ["●", "⬤", "◉", "•"]) {
+      const result = parseToolOutput(`${bullet} Write(/tmp/test/file.ts)`);
+      expect(result).toEqual({
+        filePath: "/tmp/test/file.ts",
+        operation: "created",
+      });
+    }
+  });
+
+  it("detects tool header concatenated with previous output (PTY buffering)", () => {
+    // PTY data may concatenate tool header with previous line output
+    const result = parseToolOutput("Done⏺ Write(/tmp/test/file.md)");
+    expect(result).toEqual({
+      filePath: "/tmp/test/file.md",
+      operation: "created",
+    });
   });
 });
 

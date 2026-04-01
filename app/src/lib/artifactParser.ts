@@ -1,6 +1,8 @@
 // --- ANSI Stripping ---
 
-const ANSI_RE = /\x1b\[[0-9;]*[a-zA-Z]/g;
+// Handles: CSI sequences (\x1b[...), DEC private modes (\x1b[?...),
+// OSC sequences (\x1b]...\x07 or \x1b]...\x1b\\), and single-char escapes (\x1b(B etc.)
+const ANSI_RE = /\x1b\[[0-9;?]*[a-zA-Z]|\x1b\].*?(?:\x07|\x1b\\)|\x1b[^[\]]/g;
 
 export function stripAnsi(text: string): string {
   return text.replace(ANSI_RE, "");
@@ -121,6 +123,26 @@ export function parseToolOutput(line: string): ParsedToolOutput | null {
   // Skip empty or structural lines
   for (const skip of SKIP_PATTERNS) {
     if (skip.test(clean)) return null;
+  }
+
+  // Claude Code v2 tool header format: ToolName(path)
+  // Not anchored to ^ because PTY data may concatenate tool headers with previous output
+  const toolHeaderMatch = clean.match(/\b(Write|Read|Edit)\s*\((\/.+?)\)/);
+  if (toolHeaderMatch) {
+    const toolName = toolHeaderMatch[1];
+    const headerPath = toolHeaderMatch[2].trim();
+    if (toolName === "Write") {
+      return { filePath: headerPath, operation: "created" };
+    }
+    if (toolName === "Edit") {
+      return { filePath: headerPath, operation: "edited" };
+    }
+    if (toolName === "Read") {
+      if (hasSourceExtension(headerPath)) {
+        return { filePath: headerPath, operation: "read" };
+      }
+      return null;
+    }
   }
 
   // Must have a file path to be interesting
