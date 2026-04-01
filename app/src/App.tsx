@@ -429,6 +429,19 @@ export default function App() {
   const positions = createMemo(() => computeEffectivePositions(layout()));
   const dividers = createMemo(() => isZoomed() ? [] : computeDividers(layout()));
   const leafIds = createMemo(() => getLeafPaneIds());
+  const allPaneIds = createMemo(() => {
+    // Active tab's panes come from the live layout signal
+    const activeIds = new Set(getLeafPaneIds());
+    // Other tabs' panes come from their stored layouts
+    for (const tab of getTabs()) {
+      if (tab.id !== getActiveTabId()) {
+        for (const id of getLeafPaneIds(tab.layout)) {
+          activeIds.add(id);
+        }
+      }
+    }
+    return [...activeIds];
+  });
 
   return (
     <div class="app">
@@ -506,15 +519,17 @@ export default function App() {
                 </div>
               }
             >
-              <For each={leafIds()}>
+              <For each={allPaneIds()}>
                 {(id) => {
                   const pos = () => positions()[id];
+                  const isInActiveTab = () => !!pos();
                   const hidden = () => {
+                    if (!isInActiveTab()) return true;
                     const p = pos();
-                    return p ? p.w === 0 && p.h === 0 : false;
+                    return p ? p.w === 0 && p.h === 0 : true;
                   };
                   return (
-                    <Show when={panes[id] && pos()}>
+                    <Show when={panes[id]}>
                       <div
                         class="pane-position"
                         style={{
