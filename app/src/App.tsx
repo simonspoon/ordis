@@ -14,6 +14,7 @@ import { toast } from "./lib/toast";
 import { registerCommand, togglePalette, paletteOpen, closePalette } from "./lib/commands";
 import { artifactSidebarVisible, toggleArtifactSidebar, clearArtifacts, type ArtifactEntry } from "./lib/artifacts";
 import { getSessionPlugins, getWorkspacePlugins, getSessionPluginVisibility } from "./lib/plugins";
+import { initializePlugins } from "./lib/pluginLoader";
 import PaneBar from "./components/PaneBar";
 import TerminalPane from "./components/TerminalPane";
 import ViewerPane from "./components/ViewerPane";
@@ -361,6 +362,11 @@ export default function App() {
     };
     window.addEventListener("keydown", onKeyDown);
     onCleanup(() => window.removeEventListener("keydown", onKeyDown));
+  });
+
+  // Initialize bundled plugins
+  onMount(() => {
+    initializePlugins();
   });
 
   const switchToWorkspace = () => {
