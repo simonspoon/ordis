@@ -302,9 +302,14 @@ export async function restoreSession(): Promise<boolean> {
     const leafIds = getLeafPaneIds(data.layout);
     if (leafIds.length === 0) return false;
 
-    // Validate: ensure all pane cwds exist (gracefully skip invalid ones)
+    // Skip viewer panes (now handled by overlay plugin) and remove from layout
+    const skippedIds: string[] = [];
     for (const id of leafIds) {
       const paneInfo = data.panes[id];
+      if (paneInfo?.paneType === "viewer") {
+        skippedIds.push(id);
+        continue;
+      }
       const cwd = paneInfo?.cwd || "";
       setPanes(id, {
         id,
@@ -316,11 +321,21 @@ export async function restoreSession(): Promise<boolean> {
       });
     }
 
-    setLayout(data.layout);
-    if (data.activePaneId && leafIds.includes(data.activePaneId)) {
+    // Remove skipped viewer panes from layout
+    let cleanedLayout: LayoutNode | null = data.layout;
+    for (const id of skippedIds) {
+      cleanedLayout = cleanedLayout ? removeLeaf(cleanedLayout, id) : null;
+    }
+    if (!cleanedLayout) return false;
+
+    const remainingIds = getLeafPaneIds(cleanedLayout);
+    if (remainingIds.length === 0) return false;
+
+    setLayout(cleanedLayout);
+    if (data.activePaneId && remainingIds.includes(data.activePaneId)) {
       setActivePaneId(data.activePaneId);
     } else {
-      setActivePaneId(leafIds[0]);
+      setActivePaneId(remainingIds[0]);
     }
     return true;
   } catch {
@@ -379,12 +394,17 @@ export async function loadWorkspace(name: string): Promise<boolean> {
     setPanes(produce((p) => { delete p[id]; }));
   }
 
-  // Load workspace panes
+  // Load workspace panes, skipping viewer panes (now handled by overlay plugin)
   const leafIds = getLeafPaneIds(data.layout);
   if (leafIds.length === 0) return false;
 
+  const skippedIds: string[] = [];
   for (const id of leafIds) {
     const paneInfo = data.panes[id];
+    if (paneInfo?.paneType === "viewer") {
+      skippedIds.push(id);
+      continue;
+    }
     setPanes(id, {
       id,
       cwd: paneInfo?.cwd || "",
@@ -396,9 +416,19 @@ export async function loadWorkspace(name: string): Promise<boolean> {
     });
   }
 
-  setLayout(data.layout);
+  // Remove skipped viewer panes from layout
+  let cleanedLayout: LayoutNode | null = data.layout;
+  for (const id of skippedIds) {
+    cleanedLayout = cleanedLayout ? removeLeaf(cleanedLayout, id) : null;
+  }
+  if (!cleanedLayout) return false;
+
+  const remainingIds = getLeafPaneIds(cleanedLayout);
+  if (remainingIds.length === 0) return false;
+
+  setLayout(cleanedLayout);
   setZoomedPaneId(null);
-  setActivePaneId(leafIds[0]);
+  setActivePaneId(remainingIds[0]);
   return true;
 }
 

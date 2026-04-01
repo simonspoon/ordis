@@ -3,21 +3,20 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
   panes, layout, activePaneId, setActivePaneId,
-  createPane, createViewerPane, splitPane, closePane, toggleZoom, isZoomed,
+  createPane, splitPane, closePane, toggleZoom, isZoomed,
   getLeafPaneIds, computeEffectivePositions, computeDividers,
   saveSession, restoreSession,
   saveWorkspace, loadWorkspace, listWorkspaces,
 } from "./lib/store";
-import type { ViewerType } from "./lib/store";
 import { viewMode, setViewMode, setDashboardView } from "./lib/tasks";
 import { toast } from "./lib/toast";
 import { registerCommand, togglePalette, paletteOpen, closePalette } from "./lib/commands";
 import { clearArtifacts } from "./lib/artifacts";
 import { getSessionPlugins, getWorkspacePlugins, getActiveSidebar, getActiveOverlay, dismissSessionOverlay, toggleSessionPlugin } from "./lib/plugins";
 import { initializePlugins } from "./lib/pluginLoader";
+import { openInViewer } from "./plugins/contentViewerPlugin";
 import PaneBar from "./components/PaneBar";
 import TerminalPane from "./components/TerminalPane";
-import ViewerPane from "./components/ViewerPane";
 import SplitDivider from "./components/SplitDivider";
 import Dashboard from "./components/Dashboard";
 import TaskSidebar from "./components/TaskSidebar";
@@ -113,7 +112,7 @@ export default function App() {
           });
           if (selected) {
             const viewerType = await invoke<string>("detect_file_type", { path: selected });
-            createViewerPane(selected, viewerType as ViewerType);
+            openInViewer(selected, viewerType);
             setViewMode("workspace");
           }
         } catch (e) {
@@ -139,7 +138,7 @@ export default function App() {
       shortcut: "Cmd+W",
       action: () => {
         const active = activePaneId();
-        if (active && (getLeafPaneIds().length > 1 || panes[active]?.paneType === "viewer")) closePane(active);
+        if (active && getLeafPaneIds().length > 1) closePane(active);
       },
     });
     registerCommand({
@@ -326,7 +325,7 @@ export default function App() {
           const selected = await open({ multiple: false, title: "Open file in viewer" });
           if (selected) {
             const viewerType = await invoke<string>("detect_file_type", { path: selected });
-            createViewerPane(selected, viewerType as ViewerType);
+            openInViewer(selected, viewerType);
             setViewMode("workspace");
           }
         }).catch(() => {});
@@ -348,7 +347,7 @@ export default function App() {
       } else if (e.key === "w") {
         e.preventDefault();
         const active = activePaneId();
-        if (active && (getLeafPaneIds().length > 1 || panes[active]?.paneType === "viewer")) closePane(active);
+        if (active && getLeafPaneIds().length > 1) closePane(active);
       } else if (e.key >= "3" && e.key <= "9") {
         e.preventDefault();
         const ids = getLeafPaneIds();
@@ -503,7 +502,6 @@ export default function App() {
                     const p = pos();
                     return p ? p.w === 0 && p.h === 0 : false;
                   };
-                  const isViewer = () => panes[id]?.paneType === "viewer";
                   return (
                     <Show when={panes[id] && pos()}>
                       <div
@@ -517,9 +515,7 @@ export default function App() {
                           overflow: hidden() ? "hidden" : "visible",
                         }}
                       >
-                        <Show when={isViewer()} fallback={<TerminalPane paneId={id} />}>
-                          <ViewerPane paneId={id} />
-                        </Show>
+                        <TerminalPane paneId={id} />
                       </div>
                     </Show>
                   );

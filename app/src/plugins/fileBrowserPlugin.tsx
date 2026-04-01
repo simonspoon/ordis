@@ -1,9 +1,9 @@
 import { createSignal, createResource, createEffect, For, Show } from "solid-js";
 import type { Component } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { createViewerPane, activePaneId, panes } from "../lib/store";
-import type { ViewerType } from "../lib/store";
+import { activePaneId, panes } from "../lib/store";
 import { registerSessionPlugin } from "../lib/plugins";
+import { openInViewer } from "./contentViewerPlugin";
 
 interface DirEntry {
   name: string;
@@ -56,7 +56,7 @@ function getIcon(entry: DirEntry): string {
   return extensionIcons[entry.extension.toLowerCase()] || "---";
 }
 
-function getViewerType(ext: string): ViewerType {
+function getViewerType(ext: string): string {
   const lower = ext.toLowerCase();
   if (["md", "mdx", "markdown"].includes(lower)) return "markdown";
   if (["png", "jpg", "jpeg", "gif", "bmp", "svg", "webp", "ico", "avif"].includes(lower)) return "image";
@@ -126,7 +126,7 @@ const FileBrowser: Component<{ visible: boolean }> = (props) => {
     const base = currentPath();
     const filePath = base === "/" ? `/${name}` : `${base}/${name}`;
     const viewerType = getViewerType(ext);
-    createViewerPane(filePath, viewerType, base);
+    openInViewer(filePath, viewerType);
   };
 
   const displayPath = () => {
