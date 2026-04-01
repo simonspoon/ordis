@@ -465,6 +465,9 @@ body {
   color: var(--text-primary);
   background: rgba(124, 92, 191, 0.15);
 }
+.titlebar-tab-icon {
+  margin-right: 4px;
+}
 
 /* Workspace layout */
 .workspace-layout {

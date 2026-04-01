@@ -1,6 +1,7 @@
 import { createSignal } from "solid-js";
 import type { Component } from "solid-js";
 import { registerCommand } from "./commands";
+import { setViewMode } from "./tasks";
 
 // --- Types ---
 
@@ -17,9 +18,14 @@ export type SessionPlugin = {
   component: Component<{ visible: boolean }>;
 };
 
+export interface WorkspacePluginProps {
+  sessions: { id: string; cwd: string; agent?: string; effort?: string }[];
+  activePaneId: string | null;
+}
+
 export type WorkspacePlugin = {
   manifest: PluginManifest;
-  component: Component;
+  component: Component<WorkspacePluginProps>;
 };
 
 // --- State ---
@@ -50,7 +56,7 @@ export function registerSessionPlugin(
 
 export function registerWorkspacePlugin(
   manifest: PluginManifest,
-  component: Component,
+  component: Component<WorkspacePluginProps>,
 ) {
   if (manifest.type !== "workspace") {
     throw new Error(
@@ -61,7 +67,7 @@ export function registerWorkspacePlugin(
   registerCommand({
     id: `view-plugin-${manifest.id}`,
     label: `View ${manifest.name}`,
-    action: () => {},
+    action: () => setViewMode(`plugin-${manifest.id}`),
   });
 }
 

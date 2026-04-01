@@ -427,6 +427,17 @@ export default function App() {
           >
             Settings
           </button>
+          <For each={getWorkspacePlugins()}>
+            {(plugin) => (
+              <button
+                class={`titlebar-tab ${viewMode() === `plugin-${plugin.manifest.id}` ? "titlebar-tab-active" : ""}`}
+                onClick={() => setViewMode(`plugin-${plugin.manifest.id}`)}
+              >
+                <span class="titlebar-tab-icon">{plugin.manifest.icon}</span>
+                {plugin.manifest.name}
+              </button>
+            )}
+          </For>
         </div>
       </div>
 
@@ -441,7 +452,10 @@ export default function App() {
       <For each={getWorkspacePlugins()}>
         {(plugin) => (
           <Show when={viewMode() === `plugin-${plugin.manifest.id}`}>
-            <plugin.component />
+            <plugin.component
+              sessions={Object.values(panes).filter((p): p is NonNullable<typeof p> => p != null && p.paneType === "terminal").map((p) => ({ id: p.id, cwd: p.cwd, agent: p.agent, effort: p.effort }))}
+              activePaneId={activePaneId()}
+            />
           </Show>
         )}
       </For>

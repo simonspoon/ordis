@@ -5,6 +5,7 @@ import {
   registerWorkspacePlugin,
   registerPluginCommand,
 } from "../lib/plugins";
+import type { WorkspacePluginProps } from "../lib/plugins";
 import { toast } from "../lib/toast";
 
 const TestSidebar: Component<{ visible: boolean }> = (props) => {
@@ -17,11 +18,13 @@ const TestSidebar: Component<{ visible: boolean }> = (props) => {
   );
 };
 
-const TestWorkspace: Component = () => {
+const TestWorkspace: Component<WorkspacePluginProps> = (props) => {
   return (
     <div style={{ padding: "12px" }}>
       <h2>Test Workspace</h2>
       <p>Verification plugin for the workspace slot.</p>
+      <p>Active sessions: {props.sessions.length}</p>
+      <p>Active pane: {props.activePaneId || "none"}</p>
     </div>
   );
 };
