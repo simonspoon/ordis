@@ -1,7 +1,7 @@
 import { createSignal, createResource, createEffect, For, Show } from "solid-js";
 import type { Component } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { activePaneId, panes } from "../lib/store";
+import { activePaneId, panes, setPanes } from "../lib/store";
 import { registerSessionPlugin } from "../lib/plugins";
 import { openInViewer } from "./contentViewerPlugin";
 
@@ -71,11 +71,13 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)}M`;
 }
 
+const FB_PLUGIN_KEY = "file-browser";
+
 const FileBrowser: Component<{ visible: boolean }> = (props) => {
   const [currentPath, setCurrentPath] = createSignal("");
   const [showHidden, setShowHidden] = createSignal(false);
 
-  // Reactively track the active pane's cwd
+  // Reactively track the active pane's cwd and restore showHidden
   createEffect(async () => {
     const active = activePaneId();
     const pane = panes[active];
@@ -89,6 +91,9 @@ const FileBrowser: Component<{ visible: boolean }> = (props) => {
         setCurrentPath("/");
       }
     }
+    // Restore showHidden from pane's pluginData
+    const saved = pane?.pluginData?.[FB_PLUGIN_KEY] as { showHidden?: boolean } | undefined;
+    setShowHidden(saved?.showHidden ?? false);
   });
 
   const [entries] = createResource(
@@ -140,7 +145,15 @@ const FileBrowser: Component<{ visible: boolean }> = (props) => {
         <span class="file-browser-title">Files</span>
         <button
           class="viewer-action"
-          onClick={() => setShowHidden((v) => !v)}
+          onClick={() => {
+            const next = !showHidden();
+            setShowHidden(next);
+            const paneId = activePaneId();
+            const pane = paneId ? panes[paneId] : undefined;
+            if (paneId && pane) {
+              setPanes(paneId, "pluginData", { ...pane.pluginData, [FB_PLUGIN_KEY]: { showHidden: next } });
+            }
+          }}
           title={showHidden() ? "Hide dotfiles" : "Show dotfiles"}
           style={{ "font-size": "10px" }}
         >

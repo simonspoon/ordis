@@ -1,7 +1,8 @@
-import { createSignal, createEffect, Show, Switch, Match, onMount, onCleanup, lazy } from "solid-js";
+import { createSignal, createEffect, Show, Switch, Match, onMount, onCleanup, lazy, untrack } from "solid-js";
 import type { Component } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { registerSessionPlugin, showSessionOverlay, dismissSessionOverlay } from "../lib/plugins";
+import { activePaneId, panes, setPanes } from "../lib/store";
 import type { ViewerType } from "../lib/store";
 
 const CodeViewer = lazy(() => import("../components/CodeViewer"));
@@ -26,16 +27,72 @@ const [loading, setLoading] = createSignal(false);
 const [error, setError] = createSignal<string | null>(null);
 const [lineWrap, setLineWrap] = createSignal(false);
 
+// --- Per-pane state persistence ---
+
+interface ContentViewerPaneState {
+  filePath: string | null;
+  viewerType: ViewerType;
+  lineWrap: boolean;
+}
+
+const PLUGIN_KEY = "content-viewer";
+
+let previousPaneId: string | null = null;
+
+function saveStateToPane(paneId: string): void {
+  const pane = panes[paneId];
+  if (!pane) return;
+  const state: ContentViewerPaneState = {
+    filePath: currentFilePath(),
+    viewerType: currentViewerType(),
+    lineWrap: lineWrap(),
+  };
+  setPanes(paneId, "pluginData", { ...pane.pluginData, [PLUGIN_KEY]: state });
+}
+
+function loadStateFromPane(paneId: string): void {
+  const pane = panes[paneId];
+  const saved = pane?.pluginData?.[PLUGIN_KEY] as ContentViewerPaneState | undefined;
+  if (saved?.filePath) {
+    setCurrentViewerType(saved.viewerType);
+    setLineWrap(saved.lineWrap);
+    setCurrentFilePath(saved.filePath);
+  } else {
+    setCurrentFilePath(null);
+    setCurrentViewerType("code");
+    setFileData(null);
+    setError(null);
+    setLoading(false);
+    setLineWrap(false);
+  }
+}
+
+function clearStateFromPane(paneId: string): void {
+  const pane = panes[paneId];
+  if (!pane) return;
+  const updated = { ...pane.pluginData };
+  delete updated[PLUGIN_KEY];
+  setPanes(paneId, "pluginData", updated);
+}
+
 // --- Exported API ---
 
 export function openInViewer(filePath: string, viewerType?: string) {
+  const paneId = activePaneId();
   setCurrentFilePath(filePath);
   if (viewerType) {
     setCurrentViewerType(viewerType as ViewerType);
+    if (paneId) saveStateToPane(paneId);
   } else {
     invoke<string>("detect_file_type", { path: filePath })
-      .then((detected) => setCurrentViewerType(detected as ViewerType))
-      .catch(() => setCurrentViewerType("code"));
+      .then((detected) => {
+        setCurrentViewerType(detected as ViewerType);
+        if (paneId) saveStateToPane(paneId);
+      })
+      .catch(() => {
+        setCurrentViewerType("code");
+        if (paneId) saveStateToPane(paneId);
+      });
   }
   showSessionOverlay("content-viewer");
 }
@@ -59,6 +116,20 @@ function fileName(path: string): string {
 // --- Component ---
 
 const ContentViewer: Component<{ visible: boolean }> = (props) => {
+  // Swap state when active pane changes
+  createEffect(() => {
+    const newPaneId = activePaneId();
+    if (newPaneId === previousPaneId) return;
+    // Save current state to the old pane
+    if (previousPaneId) {
+      untrack(() => saveStateToPane(previousPaneId!));
+    }
+    previousPaneId = newPaneId;
+    if (!newPaneId) return;
+    // Load state from the new pane
+    untrack(() => loadStateFromPane(newPaneId));
+  });
+
   // Load file content when currentFilePath changes
   createEffect(() => {
     const path = currentFilePath();
@@ -87,11 +158,13 @@ const ContentViewer: Component<{ visible: boolean }> = (props) => {
   // Clear state when overlay is dismissed externally
   createEffect(() => {
     if (!props.visible && currentFilePath() !== null) {
+      const paneId = activePaneId();
       setCurrentFilePath(null);
       setFileData(null);
       setError(null);
       setLoading(false);
       setLineWrap(false);
+      if (paneId) clearStateFromPane(paneId);
     }
   });
 
