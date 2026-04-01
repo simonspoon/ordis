@@ -12,7 +12,7 @@ import type { ViewerType } from "./lib/store";
 import { viewMode, setViewMode, setDashboardView } from "./lib/tasks";
 import { toast } from "./lib/toast";
 import { registerCommand, togglePalette, paletteOpen, closePalette } from "./lib/commands";
-import { artifactSidebarVisible, toggleArtifactSidebar, clearArtifacts, type ArtifactEntry } from "./lib/artifacts";
+import { clearArtifacts } from "./lib/artifacts";
 import { getSessionPlugins, getWorkspacePlugins, getActiveSidebar, getActiveOverlay, dismissSessionOverlay, toggleSessionPlugin } from "./lib/plugins";
 import { initializePlugins } from "./lib/pluginLoader";
 import PaneBar from "./components/PaneBar";
@@ -21,8 +21,6 @@ import ViewerPane from "./components/ViewerPane";
 import SplitDivider from "./components/SplitDivider";
 import Dashboard from "./components/Dashboard";
 import TaskSidebar from "./components/TaskSidebar";
-import ArtifactSidebar from "./components/ArtifactSidebar";
-import ArtifactPopover from "./components/ArtifactPopover";
 import ToastContainer from "./components/Toast";
 import Settings from "./components/Settings";
 import CommandPalette from "./components/CommandPalette";
@@ -32,7 +30,6 @@ import "./App.css";
 
 export default function App() {
   const [sidebarVisible, setSidebarVisible] = createSignal(false);
-  const [popoverArtifact, setPopoverArtifact] = createSignal<ArtifactEntry | null>(null);
 
   // Register commands
   onMount(() => {
@@ -94,7 +91,7 @@ export default function App() {
       label: "Toggle Artifact Sidebar",
       shortcut: "Cmd+Shift+A",
       action: () => {
-        toggleArtifactSidebar();
+        toggleSessionPlugin("artifact-viewer");
         if (viewMode() !== "workspace") setViewMode("workspace");
       },
     });
@@ -317,7 +314,7 @@ export default function App() {
       // Artifact sidebar toggle: Cmd+Shift+A
       if (e.key === "a" && e.shiftKey) {
         e.preventDefault();
-        toggleArtifactSidebar();
+        toggleSessionPlugin("artifact-viewer");
         if (viewMode() !== "workspace") setViewMode("workspace");
         return;
       }
@@ -551,19 +548,11 @@ export default function App() {
               }}
             </Show>
           </div>
-          <ArtifactSidebar
-            visible={artifactSidebarVisible()}
-            onSelect={(artifact) => setPopoverArtifact(artifact)}
-          />
         </div>
       </div>
 
       <StatusBar />
 
-      <ArtifactPopover
-        artifact={popoverArtifact()}
-        onClose={() => setPopoverArtifact(null)}
-      />
       <CommandPalette />
       <ToastContainer />
     </div>

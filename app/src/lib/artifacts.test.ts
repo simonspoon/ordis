@@ -7,8 +7,6 @@ import {
   getPreEditContent,
   clearArtifacts,
   updateArtifact,
-  toggleArtifactSidebar,
-  artifactSidebarVisible,
 } from "./artifacts";
 
 // Helper: run inside a reactive root so Solid.js stores work
@@ -312,20 +310,6 @@ describe("eviction at MAX_ARTIFACTS (200)", () => {
 
     // The first entry should have been evicted (it's the oldest)
     expect(getPreEditContent(ids[0])).toBeUndefined();
-  });
-});
-
-// --- toggleArtifactSidebar ---
-
-describe("toggleArtifactSidebar", () => {
-  it("toggles sidebar visibility", () => {
-    withRoot(() => {
-      expect(artifactSidebarVisible()).toBe(false);
-      toggleArtifactSidebar();
-      expect(artifactSidebarVisible()).toBe(true);
-      toggleArtifactSidebar();
-      expect(artifactSidebarVisible()).toBe(false);
-    });
   });
 });
 

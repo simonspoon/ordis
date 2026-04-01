@@ -1,4 +1,3 @@
-import { createSignal } from "solid-js";
 import { createStore, produce } from "solid-js/store";
 
 // --- Types ---
@@ -23,7 +22,6 @@ const MAX_ARTIFACTS = 200;
 // --- State ---
 
 const [artifacts, setArtifacts] = createStore<Record<string, ArtifactEntry>>({});
-export const [artifactSidebarVisible, setArtifactSidebarVisible] = createSignal(false);
 
 // Store preEditContent outside the reactive store to avoid diffing overhead on large strings
 const preEditContentMap = new Map<string, string>();
@@ -116,6 +114,3 @@ export function clearArtifacts() {
   }));
 }
 
-export function toggleArtifactSidebar() {
-  setArtifactSidebarVisible((v) => !v);
-}
