@@ -402,6 +402,34 @@ export default function Settings() {
               profiles={ordisProfiles()}
               dirty={ordisDirty()}
               onSetDefaultCwd={(v) => { setOrdisDefaultCwd(v); setOrdisDirty(true); }}
+              onUpdateProject={(idx, proj) => {
+                const updated = [...ordisProjects()];
+                updated[idx] = proj;
+                setOrdisProjects(updated);
+                setOrdisDirty(true);
+              }}
+              onAddProject={() => {
+                setOrdisProjects([...ordisProjects(), { name: "", path: "" }]);
+                setOrdisDirty(true);
+              }}
+              onRemoveProject={(idx) => {
+                setOrdisProjects(ordisProjects().filter((_, i) => i !== idx));
+                setOrdisDirty(true);
+              }}
+              onUpdateProfile={(idx, profile) => {
+                const updated = [...ordisProfiles()];
+                updated[idx] = profile;
+                setOrdisProfiles(updated);
+                setOrdisDirty(true);
+              }}
+              onAddProfile={() => {
+                setOrdisProfiles([...ordisProfiles(), { name: "" }]);
+                setOrdisDirty(true);
+              }}
+              onRemoveProfile={(idx) => {
+                setOrdisProfiles(ordisProfiles().filter((_, i) => i !== idx));
+                setOrdisDirty(true);
+              }}
               onSave={saveOrdisConfig}
             />
           </Show>
@@ -497,6 +525,12 @@ function OrdisGeneralPanel(props: {
   profiles: {name: string; cwd?: string; agent?: string; prompt?: string}[];
   dirty: boolean;
   onSetDefaultCwd: (v: string) => void;
+  onUpdateProject: (idx: number, project: {name: string; path: string}) => void;
+  onAddProject: () => void;
+  onRemoveProject: (idx: number) => void;
+  onUpdateProfile: (idx: number, profile: {name: string; cwd?: string; agent?: string; prompt?: string}) => void;
+  onAddProfile: () => void;
+  onRemoveProfile: (idx: number) => void;
   onSave: () => void;
 }) {
   return (
@@ -510,13 +544,20 @@ function OrdisGeneralPanel(props: {
         <div class="settings-section-description">
           The default directory for new terminal panes
         </div>
-        <input
-          class="settings-input settings-input-sans"
-          type="text"
-          value={props.defaultCwd}
-          onInput={(e) => props.onSetDefaultCwd(e.currentTarget.value)}
-          placeholder="~/projects"
-        />
+        <div class="settings-add-row">
+          <input
+            class="settings-input settings-input-sans"
+            type="text"
+            value={props.defaultCwd}
+            onInput={(e) => props.onSetDefaultCwd(e.currentTarget.value)}
+            placeholder="~/projects"
+          />
+          <button class="settings-btn settings-btn-secondary" onClick={async () => {
+            const { open } = await import("@tauri-apps/plugin-dialog");
+            const selected = await open({ directory: true, title: "Choose default directory" });
+            if (selected) props.onSetDefaultCwd(selected as string);
+          }}>Browse</button>
+        </div>
       </div>
 
       <div class="settings-section">
@@ -524,18 +565,38 @@ function OrdisGeneralPanel(props: {
         <div class="settings-section-description">
           Projects configured in ~/.ordis/config.toml
         </div>
-        <Show when={props.projects.length > 0} fallback={<div class="settings-empty">No projects configured</div>}>
-          <div class="ordis-config-list">
-            <For each={props.projects}>
-              {(project) => (
-                <div class="ordis-config-list-item">
-                  <span class="ordis-config-list-name">{project.name}</span>
-                  <span class="ordis-config-list-path">{project.path}</span>
-                </div>
-              )}
-            </For>
-          </div>
-        </Show>
+        <div class="ordis-config-list">
+          <For each={props.projects}>
+            {(project, idx) => (
+              <div class="ordis-config-list-item">
+                <input
+                  class="settings-input settings-input-sans"
+                  style={{ width: "120px", flex: "none" }}
+                  type="text"
+                  value={project.name}
+                  placeholder="Project name"
+                  onInput={(e) => props.onUpdateProject(idx(), { ...project, name: e.currentTarget.value })}
+                />
+                <input
+                  class="settings-input"
+                  type="text"
+                  value={project.path}
+                  placeholder="~/path/to/project"
+                  onInput={(e) => props.onUpdateProject(idx(), { ...project, path: e.currentTarget.value })}
+                />
+                <button class="settings-btn settings-btn-secondary" onClick={async () => {
+                  const { open } = await import("@tauri-apps/plugin-dialog");
+                  const selected = await open({ directory: true, title: "Choose project directory" });
+                  if (selected) props.onUpdateProject(idx(), { ...project, path: selected as string });
+                }}>Browse</button>
+                <button class="settings-chip-remove" onClick={() => props.onRemoveProject(idx())}>×</button>
+              </div>
+            )}
+          </For>
+        </div>
+        <button class="settings-btn settings-btn-secondary" style={{ "margin-top": "8px" }} onClick={props.onAddProject}>
+          + Add Project
+        </button>
       </div>
 
       <div class="settings-section">
@@ -543,20 +604,63 @@ function OrdisGeneralPanel(props: {
         <div class="settings-section-description">
           Terminal profiles configured in ~/.ordis/config.toml
         </div>
-        <Show when={props.profiles.length > 0} fallback={<div class="settings-empty">No profiles configured</div>}>
-          <div class="ordis-config-list">
-            <For each={props.profiles}>
-              {(profile) => (
-                <div class="ordis-config-list-item">
-                  <span class="ordis-config-list-name">{profile.name}</span>
-                  <span class="ordis-config-list-path">
-                    {[profile.cwd, profile.agent, profile.prompt].filter(Boolean).join(" | ") || "no options"}
-                  </span>
+        <div class="ordis-config-list">
+          <For each={props.profiles}>
+            {(profile, idx) => (
+              <div class="ordis-config-list-item" style={{ "flex-direction": "column", "align-items": "stretch", gap: "6px" }}>
+                <div style={{ display: "flex", "align-items": "center", gap: "8px" }}>
+                  <input
+                    class="settings-input settings-input-sans"
+                    style={{ flex: "1" }}
+                    type="text"
+                    value={profile.name}
+                    placeholder="Profile name"
+                    onInput={(e) => props.onUpdateProfile(idx(), { ...profile, name: e.currentTarget.value })}
+                  />
+                  <button class="settings-chip-remove" onClick={() => props.onRemoveProfile(idx())}>×</button>
                 </div>
-              )}
-            </For>
-          </div>
-        </Show>
+                <div style={{ display: "flex", "align-items": "center", gap: "6px" }}>
+                  <span class="ordis-config-field-label">cwd</span>
+                  <input
+                    class="settings-input"
+                    type="text"
+                    value={profile.cwd ?? ""}
+                    placeholder="~/path"
+                    onInput={(e) => props.onUpdateProfile(idx(), { ...profile, cwd: e.currentTarget.value || undefined })}
+                  />
+                  <button class="settings-btn settings-btn-secondary" onClick={async () => {
+                    const { open } = await import("@tauri-apps/plugin-dialog");
+                    const selected = await open({ directory: true, title: "Choose profile directory" });
+                    if (selected) props.onUpdateProfile(idx(), { ...profile, cwd: selected as string });
+                  }}>Browse</button>
+                </div>
+                <div style={{ display: "flex", "align-items": "center", gap: "6px" }}>
+                  <span class="ordis-config-field-label">agent</span>
+                  <input
+                    class="settings-input settings-input-sans"
+                    type="text"
+                    value={profile.agent ?? ""}
+                    placeholder="optional agent"
+                    onInput={(e) => props.onUpdateProfile(idx(), { ...profile, agent: e.currentTarget.value || undefined })}
+                  />
+                </div>
+                <div style={{ display: "flex", "align-items": "center", gap: "6px" }}>
+                  <span class="ordis-config-field-label">prompt</span>
+                  <input
+                    class="settings-input settings-input-sans"
+                    type="text"
+                    value={profile.prompt ?? ""}
+                    placeholder="optional prompt"
+                    onInput={(e) => props.onUpdateProfile(idx(), { ...profile, prompt: e.currentTarget.value || undefined })}
+                  />
+                </div>
+              </div>
+            )}
+          </For>
+        </div>
+        <button class="settings-btn settings-btn-secondary" style={{ "margin-top": "8px" }} onClick={props.onAddProfile}>
+          + Add Profile
+        </button>
       </div>
 
       <div class="settings-save-bar">

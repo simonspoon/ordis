@@ -2978,6 +2978,12 @@ body {
   font-family: var(--font-mono);
   color: var(--text-muted);
 }
+.ordis-config-field-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 45px;
+  text-align: right;
+}
 
 /* Plugin list */
 .settings-plugin-list {
