@@ -1,10 +1,10 @@
-import { createSignal, createEffect, Show, For, onMount } from "solid-js";
+import { createSignal, createEffect, Show, For, onMount, batch } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "../lib/toast";
 
 // --- Types ---
 
-export type SettingsPanel = "permissions" | "general" | "hooks" | "mcp" | "claudemd";
+export type SettingsPanel = "ordis-general" | "permissions" | "general" | "hooks" | "mcp" | "claudemd";
 
 interface HookEntry {
   type: string;
@@ -56,7 +56,7 @@ interface ClaudeSettings {
 type SettingsScope = "global" | "project";
 
 // Module-level signal so plugin commands can switch panels
-const [activePanel, setActivePanel] = createSignal<SettingsPanel>("permissions");
+const [activePanel, setActivePanel] = createSignal<SettingsPanel>("ordis-general");
 
 export function navigateToPanel(panel: SettingsPanel) {
   setActivePanel(panel);
@@ -98,12 +98,29 @@ export default function Settings() {
   // Permission profiles state
   const [permissionProfiles, setPermissionProfiles] = createSignal<PermissionProfile[]>([]);
 
-  const navItems: { id: SettingsPanel; label: string; enabled: boolean }[] = [
-    { id: "permissions", label: "Permissions", enabled: true },
-    { id: "general", label: "General", enabled: true },
-    { id: "hooks", label: "Hooks", enabled: true },
-    { id: "mcp", label: "MCP Servers", enabled: true },
-    { id: "claudemd", label: "CLAUDE.md", enabled: true },
+  // Ordis config state
+  const [ordisDefaultCwd, setOrdisDefaultCwd] = createSignal("");
+  const [ordisProjects, setOrdisProjects] = createSignal<{name: string; path: string}[]>([]);
+  const [ordisProfiles, setOrdisProfiles] = createSignal<{name: string; cwd?: string; agent?: string; prompt?: string}[]>([]);
+  const [ordisDirty, setOrdisDirty] = createSignal(false);
+
+  const navSections: { label: string; items: { id: SettingsPanel; label: string; enabled: boolean }[] }[] = [
+    {
+      label: "Ordis",
+      items: [
+        { id: "ordis-general", label: "General", enabled: true },
+      ],
+    },
+    {
+      label: "Claude",
+      items: [
+        { id: "permissions", label: "Permissions", enabled: true },
+        { id: "general", label: "General", enabled: true },
+        { id: "hooks", label: "Hooks", enabled: true },
+        { id: "mcp", label: "MCP Servers", enabled: true },
+        { id: "claudemd", label: "CLAUDE.md", enabled: true },
+      ],
+    },
   ];
 
   async function loadSettings() {
@@ -253,6 +270,37 @@ export default function Settings() {
     }
   }
 
+  async function loadOrdisConfig() {
+    try {
+      const raw = await invoke<string>("read_ordis_config");
+      const parsed = JSON.parse(raw);
+      batch(() => {
+        setOrdisDefaultCwd(parsed.defaultCwd ?? "");
+        setOrdisProjects(parsed.projects ?? []);
+        setOrdisProfiles(parsed.profiles ?? []);
+        setOrdisDirty(false);
+      });
+    } catch (e) {
+      toast.error(`Failed to load Ordis config: ${e}`);
+    }
+  }
+
+  async function saveOrdisConfig() {
+    try {
+      await invoke("write_ordis_config", {
+        data: JSON.stringify({
+          defaultCwd: ordisDefaultCwd() || undefined,
+          projects: ordisProjects(),
+          profiles: ordisProfiles(),
+        }),
+      });
+      setOrdisDirty(false);
+      toast.info("Ordis config saved");
+    } catch (e) {
+      toast.error(`Failed to save Ordis config: ${e}`);
+    }
+  }
+
   async function loadPermissionProfiles() {
     try {
       const profiles = await invoke<PermissionProfile[]>("list_permission_profiles");
@@ -309,6 +357,7 @@ export default function Settings() {
     loadSettings();
     loadClaudeMdFiles();
     loadPermissionProfiles();
+    loadOrdisConfig();
   });
 
   // Reload when scope changes
@@ -320,25 +369,43 @@ export default function Settings() {
   return (
     <div class="settings">
       <div class="settings-sidebar">
-        <div class="settings-sidebar-title">Settings</div>
-        <For each={navItems}>
-          {(item) => (
-            <button
-              class={`settings-nav-item ${
-                activePanel() === item.id ? "settings-nav-item-active" : ""
-              } ${!item.enabled ? "settings-nav-item-disabled" : ""}`}
-              onClick={() => item.enabled && setActivePanel(item.id)}
-              disabled={!item.enabled}
-            >
-              {item.label}
-              {!item.enabled && <span style={{ "font-size": "10px", "margin-left": "auto", color: "var(--text-muted)" }}>soon</span>}
-            </button>
+        <For each={navSections}>
+          {(section) => (
+            <div class="settings-sidebar-section">
+              <div class="settings-sidebar-title">{section.label}</div>
+              <For each={section.items}>
+                {(item) => (
+                  <button
+                    class={`settings-nav-item ${
+                      activePanel() === item.id ? "settings-nav-item-active" : ""
+                    } ${!item.enabled ? "settings-nav-item-disabled" : ""}`}
+                    onClick={() => item.enabled && setActivePanel(item.id)}
+                    disabled={!item.enabled}
+                  >
+                    {item.label}
+                    {!item.enabled && <span style={{ "font-size": "10px", "margin-left": "auto", color: "var(--text-muted)" }}>soon</span>}
+                  </button>
+                )}
+              </For>
+            </div>
           )}
         </For>
       </div>
 
       <div class="settings-content">
         <Show when={!loading()} fallback={<div class="settings-empty">Loading settings...</div>}>
+          {/* Ordis General Panel */}
+          <Show when={activePanel() === "ordis-general"}>
+            <OrdisGeneralPanel
+              defaultCwd={ordisDefaultCwd()}
+              projects={ordisProjects()}
+              profiles={ordisProfiles()}
+              dirty={ordisDirty()}
+              onSetDefaultCwd={(v) => { setOrdisDefaultCwd(v); setOrdisDirty(true); }}
+              onSave={saveOrdisConfig}
+            />
+          </Show>
+
           {/* Permissions Panel */}
           <Show when={activePanel() === "permissions"}>
             <PermissionsPanel
@@ -419,6 +486,92 @@ export default function Settings() {
         </Show>
       </div>
     </div>
+  );
+}
+
+// --- Ordis General Sub-Panel ---
+
+function OrdisGeneralPanel(props: {
+  defaultCwd: string;
+  projects: {name: string; path: string}[];
+  profiles: {name: string; cwd?: string; agent?: string; prompt?: string}[];
+  dirty: boolean;
+  onSetDefaultCwd: (v: string) => void;
+  onSave: () => void;
+}) {
+  return (
+    <>
+      <div class="settings-panel-header">
+        <span class="settings-panel-title">Ordis General</span>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">Default Working Directory</div>
+        <div class="settings-section-description">
+          The default directory for new terminal panes
+        </div>
+        <input
+          class="settings-input settings-input-sans"
+          type="text"
+          value={props.defaultCwd}
+          onInput={(e) => props.onSetDefaultCwd(e.currentTarget.value)}
+          placeholder="~/projects"
+        />
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">Projects</div>
+        <div class="settings-section-description">
+          Projects configured in ~/.ordis/config.toml
+        </div>
+        <Show when={props.projects.length > 0} fallback={<div class="settings-empty">No projects configured</div>}>
+          <div class="ordis-config-list">
+            <For each={props.projects}>
+              {(project) => (
+                <div class="ordis-config-list-item">
+                  <span class="ordis-config-list-name">{project.name}</span>
+                  <span class="ordis-config-list-path">{project.path}</span>
+                </div>
+              )}
+            </For>
+          </div>
+        </Show>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">Profiles</div>
+        <div class="settings-section-description">
+          Terminal profiles configured in ~/.ordis/config.toml
+        </div>
+        <Show when={props.profiles.length > 0} fallback={<div class="settings-empty">No profiles configured</div>}>
+          <div class="ordis-config-list">
+            <For each={props.profiles}>
+              {(profile) => (
+                <div class="ordis-config-list-item">
+                  <span class="ordis-config-list-name">{profile.name}</span>
+                  <span class="ordis-config-list-path">
+                    {[profile.cwd, profile.agent, profile.prompt].filter(Boolean).join(" | ") || "no options"}
+                  </span>
+                </div>
+              )}
+            </For>
+          </div>
+        </Show>
+      </div>
+
+      <div class="settings-save-bar">
+        <button
+          class="settings-btn"
+          onClick={props.onSave}
+          disabled={!props.dirty}
+        >
+          Save
+        </button>
+        <Show when={props.dirty}>
+          <span class="settings-save-status">Unsaved changes</span>
+        </Show>
+      </div>
+    </>
   );
 }
 

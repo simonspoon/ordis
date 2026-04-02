@@ -17,6 +17,11 @@ export function init() {
     SettingsPlugin,
   );
 
+  registerPluginCommand("settings", "Open Ordis Settings", () => {
+    setViewMode("plugin-settings");
+    navigateToPanel("ordis-general");
+  });
+
   registerPluginCommand("settings", "Open Permissions", () => {
     setViewMode("plugin-settings");
     navigateToPanel("permissions");

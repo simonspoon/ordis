@@ -11,7 +11,8 @@ use tauri_plugin_notification::NotificationExt;
 
 // --- Config ---
 
-#[derive(Deserialize, Default)]
+#[derive(Deserialize, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
 struct Config {
     default_cwd: Option<String>,
     #[serde(default)]
@@ -22,13 +23,13 @@ struct Config {
     templates: Vec<TemplateConfig>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize, Clone)]
 struct ProjectConfig {
     name: String,
     path: String,
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Serialize, Clone)]
 struct ProfileConfig {
     name: String,
     cwd: Option<String>,
@@ -1046,6 +1047,80 @@ fn apply_permission_profile(profile_name: String) -> Result<(), String> {
     fs::write(&settings_path, output).map_err(|e| format!("Failed to write settings: {e}"))
 }
 
+// --- Ordis Config ---
+
+#[tauri::command]
+fn read_ordis_config() -> Result<String, String> {
+    let config = load_config();
+    serde_json::to_string(&config).map_err(|e| format!("Failed to serialize config: {e}"))
+}
+
+#[tauri::command]
+fn write_ordis_config(data: String) -> Result<(), String> {
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct OrdisConfigInput {
+        default_cwd: Option<String>,
+        #[serde(default)]
+        projects: Vec<ProjectConfig>,
+        #[serde(default)]
+        profiles: Vec<ProfileConfig>,
+    }
+
+    let input: OrdisConfigInput =
+        serde_json::from_str(&data).map_err(|e| format!("Invalid JSON: {e}"))?;
+
+    let path = config_path()?;
+    let contents = fs::read_to_string(&path).unwrap_or_default();
+
+    let mut doc: toml::Table =
+        toml::from_str(&contents).map_err(|e| format!("Failed to parse config: {e}"))?;
+
+    // Update default_cwd
+    if let Some(cwd) = input.default_cwd {
+        doc.insert("default_cwd".into(), toml::Value::String(cwd));
+    } else {
+        doc.remove("default_cwd");
+    }
+
+    // Update projects
+    let toml_projects: Vec<toml::Value> = input
+        .projects
+        .into_iter()
+        .map(|p| {
+            let mut table = toml::Table::new();
+            table.insert("name".into(), toml::Value::String(p.name));
+            table.insert("path".into(), toml::Value::String(p.path));
+            toml::Value::Table(table)
+        })
+        .collect();
+    doc.insert("projects".into(), toml::Value::Array(toml_projects));
+
+    // Update profiles
+    let toml_profiles: Vec<toml::Value> = input
+        .profiles
+        .into_iter()
+        .map(|p| {
+            let mut table = toml::Table::new();
+            table.insert("name".into(), toml::Value::String(p.name));
+            if let Some(cwd) = p.cwd {
+                table.insert("cwd".into(), toml::Value::String(cwd));
+            }
+            if let Some(agent) = p.agent {
+                table.insert("agent".into(), toml::Value::String(agent));
+            }
+            if let Some(prompt) = p.prompt {
+                table.insert("prompt".into(), toml::Value::String(prompt));
+            }
+            toml::Value::Table(table)
+        })
+        .collect();
+    doc.insert("profiles".into(), toml::Value::Array(toml_profiles));
+
+    let output = toml::to_string_pretty(&doc).map_err(|e| format!("Failed to serialize: {e}"))?;
+    fs::write(&path, output).map_err(|e| format!("Failed to write config: {e}"))
+}
+
 // --- Startup Checks ---
 
 #[derive(Serialize, Clone)]
@@ -1433,6 +1508,8 @@ pub fn run() {
             list_permission_profiles,
             save_permission_profiles,
             apply_permission_profile,
+            read_ordis_config,
+            write_ordis_config,
         ])
         .setup(|app| {
             let handle = app.handle().clone();
