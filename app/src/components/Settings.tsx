@@ -1,4 +1,4 @@
-import { createSignal, createEffect, Show, For, onMount, batch } from "solid-js";
+import { createSignal, createEffect, Show, For, Index, onMount, batch } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "../lib/toast";
 
@@ -408,10 +408,12 @@ export default function Settings() {
               dirty={ordisDirty()}
               onSetDefaultCwd={(v) => { setOrdisDefaultCwd(v); setOrdisDirty(true); }}
               onUpdateProject={(idx, proj) => {
-                const updated = [...ordisProjects()];
-                updated[idx] = proj;
-                setOrdisProjects(updated);
-                setOrdisDirty(true);
+                batch(() => {
+                  const updated = [...ordisProjects()];
+                  updated[idx] = proj;
+                  setOrdisProjects(updated);
+                  setOrdisDirty(true);
+                });
               }}
               onAddProject={() => {
                 setOrdisProjects([...ordisProjects(), { name: "", path: "" }]);
@@ -422,10 +424,12 @@ export default function Settings() {
                 setOrdisDirty(true);
               }}
               onUpdateProfile={(idx, profile) => {
-                const updated = [...ordisProfiles()];
-                updated[idx] = profile;
-                setOrdisProfiles(updated);
-                setOrdisDirty(true);
+                batch(() => {
+                  const updated = [...ordisProfiles()];
+                  updated[idx] = profile;
+                  setOrdisProfiles(updated);
+                  setOrdisDirty(true);
+                });
               }}
               onAddProfile={() => {
                 setOrdisProfiles([...ordisProfiles(), { name: "" }]);
@@ -437,10 +441,12 @@ export default function Settings() {
               }}
               env={ordisEnv()}
               onUpdateEnv={(idx, entry) => {
-                const updated = [...ordisEnv()];
-                updated[idx] = entry;
-                setOrdisEnv(updated);
-                setOrdisDirty(true);
+                batch(() => {
+                  const updated = [...ordisEnv()];
+                  updated[idx] = entry;
+                  setOrdisEnv(updated);
+                  setOrdisDirty(true);
+                });
               }}
               onAddEnv={() => {
                 setOrdisEnv([...ordisEnv(), { key: "", value: "" }]);
@@ -590,33 +596,33 @@ function OrdisGeneralPanel(props: {
           Projects configured in ~/.ordis/config.toml
         </div>
         <div class="ordis-config-list">
-          <For each={props.projects}>
+          <Index each={props.projects}>
             {(project, idx) => (
               <div class="ordis-config-list-item">
                 <input
                   class="settings-input settings-input-sans"
                   style={{ width: "120px", flex: "none" }}
                   type="text"
-                  value={project.name}
+                  value={project().name}
                   placeholder="Project name"
-                  onInput={(e) => props.onUpdateProject(idx(), { ...project, name: e.currentTarget.value })}
+                  onInput={(e) => props.onUpdateProject(idx, { ...project(), name: e.currentTarget.value })}
                 />
                 <input
                   class="settings-input"
                   type="text"
-                  value={project.path}
+                  value={project().path}
                   placeholder="~/path/to/project"
-                  onInput={(e) => props.onUpdateProject(idx(), { ...project, path: e.currentTarget.value })}
+                  onInput={(e) => props.onUpdateProject(idx, { ...project(), path: e.currentTarget.value })}
                 />
                 <button class="settings-btn settings-btn-secondary" onClick={async () => {
                   const { open } = await import("@tauri-apps/plugin-dialog");
                   const selected = await open({ directory: true, title: "Choose project directory" });
-                  if (selected) props.onUpdateProject(idx(), { ...project, path: selected as string });
+                  if (selected) props.onUpdateProject(idx, { ...project(), path: selected as string });
                 }}>Browse</button>
-                <button class="settings-chip-remove" onClick={() => props.onRemoveProject(idx())}>×</button>
+                <button class="settings-chip-remove" onClick={() => props.onRemoveProject(idx)}>×</button>
               </div>
             )}
-          </For>
+          </Index>
         </div>
         <button class="settings-btn settings-btn-secondary" style={{ "margin-top": "8px" }} onClick={props.onAddProject}>
           + Add Project
@@ -629,7 +635,7 @@ function OrdisGeneralPanel(props: {
           Terminal profiles configured in ~/.ordis/config.toml
         </div>
         <div class="ordis-config-list">
-          <For each={props.profiles}>
+          <Index each={props.profiles}>
             {(profile, idx) => (
               <div class="ordis-config-list-item" style={{ "flex-direction": "column", "align-items": "stretch", gap: "6px" }}>
                 <div style={{ display: "flex", "align-items": "center", gap: "8px" }}>
@@ -637,25 +643,25 @@ function OrdisGeneralPanel(props: {
                     class="settings-input settings-input-sans"
                     style={{ flex: "1" }}
                     type="text"
-                    value={profile.name}
+                    value={profile().name}
                     placeholder="Profile name"
-                    onInput={(e) => props.onUpdateProfile(idx(), { ...profile, name: e.currentTarget.value })}
+                    onInput={(e) => props.onUpdateProfile(idx, { ...profile(), name: e.currentTarget.value })}
                   />
-                  <button class="settings-chip-remove" onClick={() => props.onRemoveProfile(idx())}>×</button>
+                  <button class="settings-chip-remove" onClick={() => props.onRemoveProfile(idx)}>×</button>
                 </div>
                 <div style={{ display: "flex", "align-items": "center", gap: "6px" }}>
                   <span class="ordis-config-field-label">cwd</span>
                   <input
                     class="settings-input"
                     type="text"
-                    value={profile.cwd ?? ""}
+                    value={profile().cwd ?? ""}
                     placeholder="~/path"
-                    onInput={(e) => props.onUpdateProfile(idx(), { ...profile, cwd: e.currentTarget.value || undefined })}
+                    onInput={(e) => props.onUpdateProfile(idx, { ...profile(), cwd: e.currentTarget.value || undefined })}
                   />
                   <button class="settings-btn settings-btn-secondary" onClick={async () => {
                     const { open } = await import("@tauri-apps/plugin-dialog");
                     const selected = await open({ directory: true, title: "Choose profile directory" });
-                    if (selected) props.onUpdateProfile(idx(), { ...profile, cwd: selected as string });
+                    if (selected) props.onUpdateProfile(idx, { ...profile(), cwd: selected as string });
                   }}>Browse</button>
                 </div>
                 <div style={{ display: "flex", "align-items": "center", gap: "6px" }}>
@@ -663,9 +669,9 @@ function OrdisGeneralPanel(props: {
                   <input
                     class="settings-input settings-input-sans"
                     type="text"
-                    value={profile.agent ?? ""}
+                    value={profile().agent ?? ""}
                     placeholder="optional agent"
-                    onInput={(e) => props.onUpdateProfile(idx(), { ...profile, agent: e.currentTarget.value || undefined })}
+                    onInput={(e) => props.onUpdateProfile(idx, { ...profile(), agent: e.currentTarget.value || undefined })}
                   />
                 </div>
                 <div style={{ display: "flex", "align-items": "center", gap: "6px" }}>
@@ -673,14 +679,14 @@ function OrdisGeneralPanel(props: {
                   <input
                     class="settings-input settings-input-sans"
                     type="text"
-                    value={profile.prompt ?? ""}
+                    value={profile().prompt ?? ""}
                     placeholder="optional prompt"
-                    onInput={(e) => props.onUpdateProfile(idx(), { ...profile, prompt: e.currentTarget.value || undefined })}
+                    onInput={(e) => props.onUpdateProfile(idx, { ...profile(), prompt: e.currentTarget.value || undefined })}
                   />
                 </div>
               </div>
             )}
-          </For>
+          </Index>
         </div>
         <button class="settings-btn settings-btn-secondary" style={{ "margin-top": "8px" }} onClick={props.onAddProfile}>
           + Add Profile
@@ -693,29 +699,29 @@ function OrdisGeneralPanel(props: {
           Additional environment variables set when launching Claude Code sessions
         </div>
         <div class="ordis-config-list">
-          <For each={props.env}>
+          <Index each={props.env}>
             {(entry, idx) => (
               <div class="ordis-config-list-item">
                 <input
                   class="settings-input"
                   style={{ width: "160px", flex: "none" }}
                   type="text"
-                  value={entry.key}
+                  value={entry().key}
                   placeholder="VARIABLE_NAME"
-                  onInput={(e) => props.onUpdateEnv(idx(), { ...entry, key: e.currentTarget.value })}
+                  onInput={(e) => props.onUpdateEnv(idx, { ...entry(), key: e.currentTarget.value })}
                 />
                 <span style={{ color: "var(--text-muted)" }}>=</span>
                 <input
                   class="settings-input"
                   type="text"
-                  value={entry.value}
+                  value={entry().value}
                   placeholder="value"
-                  onInput={(e) => props.onUpdateEnv(idx(), { ...entry, value: e.currentTarget.value })}
+                  onInput={(e) => props.onUpdateEnv(idx, { ...entry(), value: e.currentTarget.value })}
                 />
-                <button class="settings-chip-remove" onClick={() => props.onRemoveEnv(idx())}>x</button>
+                <button class="settings-chip-remove" onClick={() => props.onRemoveEnv(idx)}>x</button>
               </div>
             )}
-          </For>
+          </Index>
         </div>
         <button class="settings-btn settings-btn-secondary" style={{ "margin-top": "8px" }} onClick={props.onAddEnv}>
           + Add Variable
