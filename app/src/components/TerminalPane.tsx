@@ -188,95 +188,106 @@ export default function TerminalPane(props: Props) {
       command += ` ${shellEscape(pane.prompt)}`;
     }
 
-    try {
-      pty = spawn("/bin/zsh", ["-l", "-c", command], {
-        cols: term.cols,
-        rows: term.rows,
-        cwd: currentCwd,
-        name: "xterm-256color",
-        env: {
-          TERM: "xterm-256color",
-          COLORTERM: "truecolor",
-        },
+    // Load custom env vars from ordis config, then spawn PTY
+    (async () => {
+      let customEnv: Record<string, string> = {};
+      try {
+        const raw = await invoke<string>("read_ordis_config");
+        const config = JSON.parse(raw);
+        customEnv = config.env ?? {};
+      } catch { /* proceed without custom env */ }
+
+      try {
+        pty = spawn("/bin/zsh", ["-l", "-c", command], {
+          cols: term!.cols,
+          rows: term!.rows,
+          cwd: currentCwd,
+          name: "xterm-256color",
+          env: {
+            ...customEnv,
+            TERM: "xterm-256color",
+            COLORTERM: "truecolor",
+          },
+        });
+      } catch (e) {
+        toast.error(`Failed to spawn terminal: ${e}`);
+        term!.write(`\r\n\x1b[31mFailed to spawn terminal: ${e}\x1b[0m\r\n`);
+        return;
+      }
+
+      // Pending snapshots: when a Read is detected, snapshot the file immediately
+      // so the pre-edit content is captured BEFORE any subsequent edit lands on disk.
+      const pendingSnapshots = new Map<string, string>();
+      const SNAPSHOT_TTL_MS = 60_000;
+      const snapshotTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+      bus = createSessionEventBus();
+
+      pty.onData((data: Uint8Array) => {
+        term!.write(new Uint8Array(data));
+        bus!.feed(data);
       });
-    } catch (e) {
-      toast.error(`Failed to spawn terminal: ${e}`);
-      term.write(`\r\n\x1b[31mFailed to spawn terminal: ${e}\x1b[0m\r\n`);
-      return;
-    }
 
-    // Pending snapshots: when a Read is detected, snapshot the file immediately
-    // so the pre-edit content is captured BEFORE any subsequent edit lands on disk.
-    const pendingSnapshots = new Map<string, string>();
-    const SNAPSHOT_TTL_MS = 60_000;
-    const snapshotTimers = new Map<string, ReturnType<typeof setTimeout>>();
+      bus.on("file_read", (e) => {
+        // Snapshot immediately — Claude reads before editing
+        invoke<{ content: string }>("snapshot_file", { path: e.path })
+          .then((snap) => {
+            pendingSnapshots.set(e.path, snap.content);
+            if (snapshotTimers.has(e.path)) clearTimeout(snapshotTimers.get(e.path));
+            snapshotTimers.set(e.path, setTimeout(() => {
+              pendingSnapshots.delete(e.path);
+              snapshotTimers.delete(e.path);
+            }, SNAPSHOT_TTL_MS));
+          })
+          .catch(() => { /* file may not exist yet */ });
 
-    bus = createSessionEventBus();
+        // Also add as artifact (old code added reads unconditionally)
+        const ext = e.path.split(".").pop() || "";
+        addArtifact(props.paneId, {
+          filePath: e.path,
+          fileName: e.path.split("/").pop() || e.path,
+          operation: "read",
+          viewerType: mapExtToViewer(ext),
+        });
+      });
 
-    pty.onData((data: Uint8Array) => {
-      term!.write(new Uint8Array(data));
-      bus!.feed(data);
-    });
+      bus.on("file_written", (e) => {
+        const ext = e.path.split(".").pop() || "";
+        const viewerType = mapExtToViewer(ext);
+        const preEditContent = (e.operation === "edited")
+          ? pendingSnapshots.get(e.path)
+          : undefined;
 
-    bus.on("file_read", (e) => {
-      // Snapshot immediately — Claude reads before editing
-      invoke<{ content: string }>("snapshot_file", { path: e.path })
-        .then((snap) => {
-          pendingSnapshots.set(e.path, snap.content);
+        addArtifact(props.paneId, {
+          filePath: e.path,
+          fileName: e.path.split("/").pop() || e.path,
+          operation: e.operation,
+          viewerType,
+          preEditContent,
+        });
+
+        // Clean up used snapshot
+        if (e.operation === "edited" && pendingSnapshots.has(e.path)) {
           if (snapshotTimers.has(e.path)) clearTimeout(snapshotTimers.get(e.path));
-          snapshotTimers.set(e.path, setTimeout(() => {
-            pendingSnapshots.delete(e.path);
-            snapshotTimers.delete(e.path);
-          }, SNAPSHOT_TTL_MS));
-        })
-        .catch(() => { /* file may not exist yet */ });
-
-      // Also add as artifact (old code added reads unconditionally)
-      const ext = e.path.split(".").pop() || "";
-      addArtifact(props.paneId, {
-        filePath: e.path,
-        fileName: e.path.split("/").pop() || e.path,
-        operation: "read",
-        viewerType: mapExtToViewer(ext),
-      });
-    });
-
-    bus.on("file_written", (e) => {
-      const ext = e.path.split(".").pop() || "";
-      const viewerType = mapExtToViewer(ext);
-      const preEditContent = (e.operation === "edited")
-        ? pendingSnapshots.get(e.path)
-        : undefined;
-
-      addArtifact(props.paneId, {
-        filePath: e.path,
-        fileName: e.path.split("/").pop() || e.path,
-        operation: e.operation,
-        viewerType,
-        preEditContent,
+          pendingSnapshots.delete(e.path);
+          snapshotTimers.delete(e.path);
+        }
       });
 
-      // Clean up used snapshot
-      if (e.operation === "edited" && pendingSnapshots.has(e.path)) {
-        if (snapshotTimers.has(e.path)) clearTimeout(snapshotTimers.get(e.path));
-        pendingSnapshots.delete(e.path);
-        snapshotTimers.delete(e.path);
-      }
-    });
+      term!.onData((data: string) => {
+        pty!.write(data);
+      });
 
-    term.onData((data: string) => {
-      pty!.write(data);
-    });
+      term!.onResize(({ cols, rows }) => {
+        if (cols > 0 && rows > 0) {
+          pty!.resize(cols, rows);
+        }
+      });
 
-    term.onResize(({ cols, rows }) => {
-      if (cols > 0 && rows > 0) {
-        pty!.resize(cols, rows);
-      }
-    });
-
-    pty.onExit(() => {
-      closePane(props.paneId);
-    });
+      pty.onExit(() => {
+        closePane(props.paneId);
+      });
+    })();
 
     resizeObserver = new ResizeObserver(() => {
       if (fitAddon && containerRef.offsetWidth > 0 && containerRef.offsetHeight > 0) {

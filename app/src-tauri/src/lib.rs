@@ -21,6 +21,8 @@ struct Config {
     profiles: Vec<ProfileConfig>,
     #[serde(default)]
     templates: Vec<TemplateConfig>,
+    #[serde(default)]
+    env: HashMap<String, String>,
 }
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -1065,6 +1067,8 @@ fn write_ordis_config(data: String) -> Result<(), String> {
         projects: Vec<ProjectConfig>,
         #[serde(default)]
         profiles: Vec<ProfileConfig>,
+        #[serde(default)]
+        env: HashMap<String, String>,
     }
 
     let input: OrdisConfigInput =
@@ -1116,6 +1120,17 @@ fn write_ordis_config(data: String) -> Result<(), String> {
         })
         .collect();
     doc.insert("profiles".into(), toml::Value::Array(toml_profiles));
+
+    // Update env
+    let mut env_table = toml::Table::new();
+    for (key, val) in input.env {
+        env_table.insert(key, toml::Value::String(val));
+    }
+    if env_table.is_empty() {
+        doc.remove("env");
+    } else {
+        doc.insert("env".into(), toml::Value::Table(env_table));
+    }
 
     let output = toml::to_string_pretty(&doc).map_err(|e| format!("Failed to serialize: {e}"))?;
     fs::write(&path, output).map_err(|e| format!("Failed to write config: {e}"))

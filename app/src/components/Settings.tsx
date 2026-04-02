@@ -102,6 +102,7 @@ export default function Settings() {
   const [ordisDefaultCwd, setOrdisDefaultCwd] = createSignal("");
   const [ordisProjects, setOrdisProjects] = createSignal<{name: string; path: string}[]>([]);
   const [ordisProfiles, setOrdisProfiles] = createSignal<{name: string; cwd?: string; agent?: string; prompt?: string}[]>([]);
+  const [ordisEnv, setOrdisEnv] = createSignal<{key: string; value: string}[]>([]);
   const [ordisDirty, setOrdisDirty] = createSignal(false);
 
   const navSections: { label: string; items: { id: SettingsPanel; label: string; enabled: boolean }[] }[] = [
@@ -278,6 +279,9 @@ export default function Settings() {
         setOrdisDefaultCwd(parsed.defaultCwd ?? "");
         setOrdisProjects(parsed.projects ?? []);
         setOrdisProfiles(parsed.profiles ?? []);
+        // Convert env object to array for editing
+        const envObj = parsed.env ?? {};
+        setOrdisEnv(Object.entries(envObj).map(([key, value]) => ({ key, value: value as string })));
         setOrdisDirty(false);
       });
     } catch (e) {
@@ -292,6 +296,7 @@ export default function Settings() {
           defaultCwd: ordisDefaultCwd() || undefined,
           projects: ordisProjects(),
           profiles: ordisProfiles(),
+          env: Object.fromEntries(ordisEnv().filter(e => e.key).map(e => [e.key, e.value])),
         }),
       });
       setOrdisDirty(false);
@@ -430,6 +435,21 @@ export default function Settings() {
                 setOrdisProfiles(ordisProfiles().filter((_, i) => i !== idx));
                 setOrdisDirty(true);
               }}
+              env={ordisEnv()}
+              onUpdateEnv={(idx, entry) => {
+                const updated = [...ordisEnv()];
+                updated[idx] = entry;
+                setOrdisEnv(updated);
+                setOrdisDirty(true);
+              }}
+              onAddEnv={() => {
+                setOrdisEnv([...ordisEnv(), { key: "", value: "" }]);
+                setOrdisDirty(true);
+              }}
+              onRemoveEnv={(idx) => {
+                setOrdisEnv(ordisEnv().filter((_, i) => i !== idx));
+                setOrdisDirty(true);
+              }}
               onSave={saveOrdisConfig}
             />
           </Show>
@@ -523,6 +543,7 @@ function OrdisGeneralPanel(props: {
   defaultCwd: string;
   projects: {name: string; path: string}[];
   profiles: {name: string; cwd?: string; agent?: string; prompt?: string}[];
+  env: {key: string; value: string}[];
   dirty: boolean;
   onSetDefaultCwd: (v: string) => void;
   onUpdateProject: (idx: number, project: {name: string; path: string}) => void;
@@ -531,6 +552,9 @@ function OrdisGeneralPanel(props: {
   onUpdateProfile: (idx: number, profile: {name: string; cwd?: string; agent?: string; prompt?: string}) => void;
   onAddProfile: () => void;
   onRemoveProfile: (idx: number) => void;
+  onUpdateEnv: (idx: number, entry: {key: string; value: string}) => void;
+  onAddEnv: () => void;
+  onRemoveEnv: (idx: number) => void;
   onSave: () => void;
 }) {
   return (
@@ -660,6 +684,41 @@ function OrdisGeneralPanel(props: {
         </div>
         <button class="settings-btn settings-btn-secondary" style={{ "margin-top": "8px" }} onClick={props.onAddProfile}>
           + Add Profile
+        </button>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-section-title">Environment Variables</div>
+        <div class="settings-section-description">
+          Additional environment variables set when launching Claude Code sessions
+        </div>
+        <div class="ordis-config-list">
+          <For each={props.env}>
+            {(entry, idx) => (
+              <div class="ordis-config-list-item">
+                <input
+                  class="settings-input"
+                  style={{ width: "160px", flex: "none" }}
+                  type="text"
+                  value={entry.key}
+                  placeholder="VARIABLE_NAME"
+                  onInput={(e) => props.onUpdateEnv(idx(), { ...entry, key: e.currentTarget.value })}
+                />
+                <span style={{ color: "var(--text-muted)" }}>=</span>
+                <input
+                  class="settings-input"
+                  type="text"
+                  value={entry.value}
+                  placeholder="value"
+                  onInput={(e) => props.onUpdateEnv(idx(), { ...entry, value: e.currentTarget.value })}
+                />
+                <button class="settings-chip-remove" onClick={() => props.onRemoveEnv(idx())}>x</button>
+              </div>
+            )}
+          </For>
+        </div>
+        <button class="settings-btn settings-btn-secondary" style={{ "margin-top": "8px" }} onClick={props.onAddEnv}>
+          + Add Variable
         </button>
       </div>
 
