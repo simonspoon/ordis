@@ -84,35 +84,33 @@ export default function PaneBar() {
 
   return (
     <>
-      <Show when={getTabs().length > 1}>
-        <div class="workspace-tabs">
-          <For each={getTabs()}>
-            {(tab) => (
-              <button
-                class={`workspace-tab ${getActiveTabId() === tab.id ? "workspace-tab-active" : ""}`}
-                onClick={() => switchTab(tab.id)}
-                onDblClick={() => handleRenameTab(tab.id, tab.name)}
-              >
-                <span>{tab.name}</span>
-                <Show when={getTabs().length > 1}>
-                  <span
-                    class="workspace-tab-close"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      closeTab(tab.id);
-                    }}
-                  >
-                    ×
-                  </span>
-                </Show>
-              </button>
-            )}
-          </For>
-          <button class="workspace-tab-add" onClick={handleNewTab} title="New Tab (Cmd+T)">
-            +
-          </button>
-        </div>
-      </Show>
+      <div class="workspace-tabs">
+        <For each={getTabs()}>
+          {(tab) => (
+            <button
+              class={`workspace-tab ${getActiveTabId() === tab.id ? "workspace-tab-active" : ""}`}
+              onClick={() => switchTab(tab.id)}
+              onDblClick={() => handleRenameTab(tab.id, tab.name)}
+            >
+              <span>{tab.name}</span>
+              <Show when={getTabs().length > 1}>
+                <span
+                  class="workspace-tab-close"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    closeTab(tab.id);
+                  }}
+                >
+                  ×
+                </span>
+              </Show>
+            </button>
+          )}
+        </For>
+        <button class="workspace-tab-add" onClick={handleNewTab} title="New Tab (Cmd+T)">
+          +
+        </button>
+      </div>
       <div class="pane-bar">
         <div class="pane-tabs">
           <For each={leafIds()}>
