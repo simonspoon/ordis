@@ -12,7 +12,7 @@ use tauri_plugin_notification::NotificationExt;
 // --- Config ---
 
 #[derive(Deserialize, Serialize, Default)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all(serialize = "camelCase"))]
 struct Config {
     default_cwd: Option<String>,
     #[serde(default)]
