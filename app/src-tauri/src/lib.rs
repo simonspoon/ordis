@@ -1000,6 +1000,9 @@ fn save_permission_profiles(profiles_json: String) -> Result<(), String> {
     );
 
     let output = toml::to_string_pretty(&doc).map_err(|e| format!("Failed to serialize: {e}"))?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create .ordis dir: {e}"))?;
+    }
     fs::write(&path, output).map_err(|e| format!("Failed to write config: {e}"))
 }
 
@@ -1133,6 +1136,9 @@ fn write_ordis_config(data: String) -> Result<(), String> {
     }
 
     let output = toml::to_string_pretty(&doc).map_err(|e| format!("Failed to serialize: {e}"))?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create .ordis dir: {e}"))?;
+    }
     fs::write(&path, output).map_err(|e| format!("Failed to write config: {e}"))
 }
 
