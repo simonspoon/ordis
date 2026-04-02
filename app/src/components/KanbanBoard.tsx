@@ -1,6 +1,6 @@
 import { For, Show, createMemo } from "solid-js";
 import {
-  getProjectList,
+  activeProject, getActiveProjectState,
   getTaskTree,
   updateTaskStatus,
   deleteTask,
@@ -18,68 +18,47 @@ const STATUS_COLUMNS = [
   { key: "done", label: "Done", color: "#4ec9b0" },
 ] as const;
 
-interface ColumnTasks {
-  projectName: string;
-  projectPath: string;
-  tasks: Task[];
-}
-
 export default function KanbanBoard() {
-  const projectList = createMemo(() => getProjectList().filter((p) => p.project.has_limbo));
+  const projectState = createMemo(() => getActiveProjectState());
 
-  // Build column data: tasks grouped by status, then by project
   const columnData = createMemo(() => {
-    const result: Record<string, ColumnTasks[]> = {
+    const result: Record<string, Task[]> = {
       "todo": [],
       "in-progress": [],
       "done": [],
     };
 
+    const state = projectState();
+    if (!state || !state.project.has_limbo) return result;
+
     const query = searchFilter().toLowerCase();
     const statusF = statusFilter();
+    const allTasks = getTaskTree(state.project.name);
 
-    for (const state of projectList()) {
-      const allTasks = getTaskTree(state.project.name);
-      const filtered = allTasks.filter((t) => {
-        // Apply search filter
-        if (query) {
-          const matches =
-            t.name.toLowerCase().includes(query) ||
-            t.id.toLowerCase().includes(query) ||
-            (t.action?.toLowerCase().includes(query) ?? false) ||
-            (t.owner?.toLowerCase().includes(query) ?? false);
-          if (!matches) return false;
-        }
-        return true;
-      });
-
-      for (const col of STATUS_COLUMNS) {
-        // Skip columns that don't match status filter (unless "all")
-        if (statusF !== "all" && statusF !== col.key) continue;
-
-        const colTasks = filtered.filter((t) => t.status === col.key);
-        if (colTasks.length > 0) {
-          result[col.key].push({
-            projectName: state.project.name,
-            projectPath: state.project.path,
-            tasks: colTasks,
-          });
-        }
+    const filtered = allTasks.filter((t) => {
+      if (query) {
+        const matches =
+          t.name.toLowerCase().includes(query) ||
+          t.id.toLowerCase().includes(query) ||
+          (t.action?.toLowerCase().includes(query) ?? false) ||
+          (t.owner?.toLowerCase().includes(query) ?? false);
+        if (!matches) return false;
       }
+      return true;
+    });
+
+    for (const col of STATUS_COLUMNS) {
+      if (statusF !== "all" && statusF !== col.key) continue;
+      result[col.key] = filtered.filter((t) => t.status === col.key);
     }
 
     return result;
   });
 
-  // Drag state
   let dragTaskId: string | null = null;
-  let dragProjectName: string | null = null;
-  let dragProjectPath: string | null = null;
 
-  const handleDragStart = (e: DragEvent, task: Task, projectName: string, projectPath: string) => {
+  const handleDragStart = (e: DragEvent, task: Task) => {
     dragTaskId = task.id;
-    dragProjectName = projectName;
-    dragProjectPath = projectPath;
     if (e.dataTransfer) {
       e.dataTransfer.effectAllowed = "move";
       e.dataTransfer.setData("text/plain", task.id);
@@ -90,8 +69,6 @@ export default function KanbanBoard() {
   const handleDragEnd = (e: DragEvent) => {
     (e.currentTarget as HTMLElement).classList.remove("kanban-card-dragging");
     dragTaskId = null;
-    dragProjectName = null;
-    dragProjectPath = null;
   };
 
   const handleDragOver = (e: DragEvent) => {
@@ -109,8 +86,9 @@ export default function KanbanBoard() {
   const handleDrop = (e: DragEvent, targetStatus: string) => {
     e.preventDefault();
     (e.currentTarget as HTMLElement).classList.remove("kanban-column-drag-over");
-    if (dragTaskId && dragProjectName && dragProjectPath) {
-      updateTaskStatus(dragProjectName, dragProjectPath, dragTaskId, targetStatus);
+    const state = projectState();
+    if (dragTaskId && state) {
+      updateTaskStatus(state.project.name, state.project.path, dragTaskId, targetStatus);
     }
   };
 
@@ -118,10 +96,7 @@ export default function KanbanBoard() {
     <div class="kanban-board">
       <For each={STATUS_COLUMNS}>
         {(col) => {
-          const groups = createMemo(() => columnData()[col.key] || []);
-          const taskCount = createMemo(() =>
-            groups().reduce((sum, g) => sum + g.tasks.length, 0)
-          );
+          const tasks = createMemo(() => columnData()[col.key] || []);
 
           return (
             <Show when={statusFilter() === "all" || statusFilter() === col.key}>
@@ -134,31 +109,25 @@ export default function KanbanBoard() {
                 <div class="kanban-column-header">
                   <span class="kanban-column-dot" style={{ background: col.color }} />
                   <span class="kanban-column-title">{col.label}</span>
-                  <span class="kanban-column-count">{taskCount()}</span>
+                  <span class="kanban-column-count">{tasks().length}</span>
                 </div>
                 <div class="kanban-column-body">
-                  <For each={groups()}>
-                    {(group) => (
-                      <>
-                        <Show when={projectList().length > 1}>
-                          <div class="kanban-project-header">{group.projectName}</div>
-                        </Show>
-                        <For each={group.tasks}>
-                          {(task) => (
-                            <KanbanCard
-                              task={task}
-                              projectName={group.projectName}
-                              projectPath={group.projectPath}
-                              columnColor={col.color}
-                              onDragStart={handleDragStart}
-                              onDragEnd={handleDragEnd}
-                            />
-                          )}
-                        </For>
-                      </>
-                    )}
+                  <For each={tasks()}>
+                    {(task) => {
+                      const state = projectState()!;
+                      return (
+                        <KanbanCard
+                          task={task}
+                          projectName={state.project.name}
+                          projectPath={state.project.path}
+                          columnColor={col.color}
+                          onDragStart={handleDragStart}
+                          onDragEnd={handleDragEnd}
+                        />
+                      );
+                    }}
                   </For>
-                  <Show when={taskCount() === 0}>
+                  <Show when={tasks().length === 0}>
                     <div class="kanban-empty">No tasks</div>
                   </Show>
                 </div>
@@ -176,7 +145,7 @@ function KanbanCard(props: {
   projectName: string;
   projectPath: string;
   columnColor: string;
-  onDragStart: (e: DragEvent, task: Task, projectName: string, projectPath: string) => void;
+  onDragStart: (e: DragEvent, task: Task) => void;
   onDragEnd: (e: DragEvent) => void;
 }) {
   const isSelected = createMemo(() => {
@@ -186,7 +155,12 @@ function KanbanCard(props: {
 
   const isChecked = createMemo(() => selectedTasks().has(props.task.id));
 
-  const allTasks = createMemo(() => getTaskTree(props.projectName));
+  const pName = createMemo(() => activeProject());
+  const allTasks = createMemo(() => {
+    const name = pName();
+    if (!name) return [];
+    return getTaskTree(name);
+  });
   const parentTask = createMemo(() => {
     if (!props.task.parent) return null;
     return allTasks().find((t) => t.id === props.task.parent) || null;
@@ -221,7 +195,7 @@ function KanbanCard(props: {
     <div
       class={`kanban-card ${isSelected() ? "kanban-card-selected" : ""}`}
       draggable={true}
-      onDragStart={(e) => props.onDragStart(e, props.task, props.projectName, props.projectPath)}
+      onDragStart={(e) => props.onDragStart(e, props.task)}
       onDragEnd={props.onDragEnd}
       onClick={handleClick}
     >

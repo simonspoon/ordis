@@ -1,6 +1,6 @@
 import { createMemo, createSignal, onMount, onCleanup, For, Show } from "solid-js";
 import {
-  getProjectList,
+  getActiveProjectState,
   getTaskTree,
   selectedTaskId, setSelectedTaskId,
   type Task,
@@ -70,50 +70,48 @@ export default function TaskTimeline() {
   const HEADER_HEIGHT = 30;
   const MIN_BAR_WIDTH = 6;
 
-  // Build flat list of timeline rows from all projects
+  // Build flat list of timeline rows from the active project
   const rows = createMemo((): TimelineRow[] => {
     const result: TimelineRow[] = [];
-    const projects = getProjectList();
+    const state = getActiveProjectState();
+    if (!state || !state.project.has_limbo) return result;
 
-    for (const state of projects) {
-      if (!state.project.has_limbo) continue;
-      const tasks = getTaskTree(state.project.name);
-      if (tasks.length === 0) continue;
+    const tasks = getTaskTree(state.project.name);
+    if (tasks.length === 0) return result;
 
-      // Build parent-child map
-      const childMap = new Map<string, Task[]>();
-      const roots: Task[] = [];
-      for (const t of tasks) {
-        if (!t.parent) {
-          roots.push(t);
-        } else {
-          const siblings = childMap.get(t.parent) || [];
-          siblings.push(t);
-          childMap.set(t.parent, siblings);
-        }
+    // Build parent-child map
+    const childMap = new Map<string, Task[]>();
+    const roots: Task[] = [];
+    for (const t of tasks) {
+      if (!t.parent) {
+        roots.push(t);
+      } else {
+        const siblings = childMap.get(t.parent) || [];
+        siblings.push(t);
+        childMap.set(t.parent, siblings);
       }
+    }
 
-      // DFS to flatten with depth
-      const visit = (task: Task, depth: number) => {
-        const startMs = parseTimestamp(task.created);
-        if (startMs === null) return; // Skip tasks without created timestamp
-        const endMs = parseTimestamp(task.updated) || Date.now();
-        result.push({
-          task,
-          project: state.project.name,
-          depth,
-          startMs,
-          endMs: Math.max(endMs, startMs + 60000), // minimum 1 minute span
-        });
-        const children = childMap.get(task.id) || [];
-        for (const child of children) {
-          visit(child, depth + 1);
-        }
-      };
-
-      for (const root of roots) {
-        visit(root, 0);
+    // DFS to flatten with depth
+    const visit = (task: Task, depth: number) => {
+      const startMs = parseTimestamp(task.created);
+      if (startMs === null) return; // Skip tasks without created timestamp
+      const endMs = parseTimestamp(task.updated) || Date.now();
+      result.push({
+        task,
+        project: state.project.name,
+        depth,
+        startMs,
+        endMs: Math.max(endMs, startMs + 60000), // minimum 1 minute span
+      });
+      const children = childMap.get(task.id) || [];
+      for (const child of children) {
+        visit(child, depth + 1);
       }
+    };
+
+    for (const root of roots) {
+      visit(root, 0);
     }
 
     return result;

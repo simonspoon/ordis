@@ -1,7 +1,7 @@
 import { createMemo, createSignal, onMount, onCleanup, For, Show } from "solid-js";
 import dagre from "dagre";
 import {
-  getProjectList,
+  getActiveProjectState,
   getTaskTree,
   selectedTaskId, setSelectedTaskId,
   type Task,
@@ -208,14 +208,13 @@ export default function DependencyGraph() {
   const [dragging, setDragging] = createSignal(false);
   const [dragStart, setDragStart] = createSignal({ x: 0, y: 0 });
 
-  // Collect all tasks across all projects
+  // Collect tasks from the active project
   const allTasks = createMemo(() => {
+    const state = getActiveProjectState();
+    if (!state || !state.project.has_limbo) return [];
     const tasks: { projectName: string; task: Task }[] = [];
-    for (const state of getProjectList()) {
-      if (!state.project.has_limbo) continue;
-      for (const t of getTaskTree(state.project.name)) {
-        tasks.push({ projectName: state.project.name, task: t });
-      }
+    for (const t of getTaskTree(state.project.name)) {
+      tasks.push({ projectName: state.project.name, task: t });
     }
     return tasks;
   });

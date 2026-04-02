@@ -1,4 +1,3 @@
-import { createSignal } from "solid-js";
 import type { Component } from "solid-js";
 import {
   registerWorkspacePlugin,
@@ -7,15 +6,12 @@ import {
 import type { WorkspacePluginProps } from "../lib/plugins";
 import { setViewMode, setDashboardView } from "../lib/tasks";
 import Dashboard from "../components/Dashboard";
-import TaskSidebar from "../components/TaskSidebar";
-
-// Module-level signal so plugin commands can toggle sidebar visibility
-const [sidebarVisible, setSidebarVisible] = createSignal(false);
+import ProjectSidebar from "../components/ProjectSidebar";
 
 const ProjectManagement: Component<WorkspacePluginProps> = () => {
   return (
     <div class="project-management-plugin">
-      <TaskSidebar visible={sidebarVisible()} />
+      <ProjectSidebar />
       <div class="project-management-main">
         <Dashboard />
       </div>
@@ -28,10 +24,6 @@ export function init() {
     { id: "project-management", name: "Projects", icon: "\uD83D\uDCCB", type: "workspace" },
     ProjectManagement,
   );
-
-  registerPluginCommand("project-management", "Toggle Task Sidebar", () => {
-    setSidebarVisible((v) => !v);
-  });
 
   registerPluginCommand("project-management", "Switch to Kanban View", () => {
     setViewMode("plugin-project-management");

@@ -1,8 +1,9 @@
 import { onMount, onCleanup, For, Show, createMemo, createSignal } from "solid-js";
 import {
   projectsLoading,
-  loadProjects, loadTemplates, toggleProject,
-  getProjectList, getFilteredRootTasks, getFilteredChildTasks, getTaskCounts,
+  loadProjects, loadTemplates,
+  getFilteredRootTasks, getFilteredChildTasks, getTaskCounts,
+  activeProject, getActiveProjectState,
   selectedTaskId, setSelectedTaskId,
   setViewMode,
   dashboardView, setDashboardView,
@@ -38,54 +39,50 @@ export default function Dashboard() {
     unlisten?.();
   });
 
-  const projectList = createMemo(() => getProjectList());
+  const projectState = createMemo(() => getActiveProjectState());
+  const projectName = createMemo(() => activeProject());
   const hasActiveFilters = createMemo(() => statusFilter() !== "all" || searchFilter() !== "");
   const selectionCount = createMemo(() => selectedTasks().size);
 
-  // Collect all visible task IDs for "Select All"
   const allVisibleTaskIds = createMemo(() => {
+    const name = projectName();
+    if (!name) return [];
+    const state = projectState();
+    if (!state || !state.project.has_limbo) return [];
     const ids: string[] = [];
-    for (const state of projectList()) {
-      if (!state.project.has_limbo) continue;
-      const tasks = getFilteredRootTasks(state.project.name);
-      const collectIds = (taskList: Task[]) => {
-        for (const t of taskList) {
-          ids.push(t.id);
-          const children = getFilteredChildTasks(state.project.name, t.id);
-          collectIds(children);
-        }
-      };
-      collectIds(tasks);
-    }
+    const tasks = getFilteredRootTasks(name);
+    const collectIds = (taskList: Task[]) => {
+      for (const t of taskList) {
+        ids.push(t.id);
+        const children = getFilteredChildTasks(name, t.id);
+        collectIds(children);
+      }
+    };
+    collectIds(tasks);
     return ids;
   });
 
-  // Bulk status change handler
   const handleBulkStatus = async (status: string) => {
+    const state = projectState();
+    if (!state) return;
     const ids = [...selectedTasks()];
-    // Find project info for each task
     for (const taskId of ids) {
-      for (const state of projectList()) {
-        const task = state.tasks.find((t: Task) => t.id === taskId);
-        if (task) {
-          await updateTaskStatus(state.project.name, state.project.path, taskId, status);
-          break;
-        }
+      const task = state.tasks.find((t: Task) => t.id === taskId);
+      if (task) {
+        await updateTaskStatus(state.project.name, state.project.path, taskId, status);
       }
     }
     clearSelection();
   };
 
-  // Bulk delete handler
   const handleBulkDelete = async () => {
+    const state = projectState();
+    if (!state) return;
     const ids = [...selectedTasks()];
     for (const taskId of ids) {
-      for (const state of projectList()) {
-        const task = state.tasks.find((t: Task) => t.id === taskId);
-        if (task) {
-          await deleteTask(state.project.name, state.project.path, taskId);
-          break;
-        }
+      const task = state.tasks.find((t: Task) => t.id === taskId);
+      if (task) {
+        await deleteTask(state.project.name, state.project.path, taskId);
       }
     }
     clearSelection();
@@ -93,131 +90,133 @@ export default function Dashboard() {
 
   return (
     <div class="dashboard">
-      <div class="dashboard-header">
-        <h1 class="dashboard-title">Projects</h1>
-        <div class="dashboard-view-toggle">
-          <button
-            class={`view-toggle-btn ${dashboardView() === "list" ? "view-toggle-btn-active" : ""}`}
-            onClick={() => setDashboardView("list")}
-            title="List view"
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <rect x="1" y="2" width="12" height="1.5" rx="0.5" fill="currentColor"/>
-              <rect x="1" y="6.25" width="12" height="1.5" rx="0.5" fill="currentColor"/>
-              <rect x="1" y="10.5" width="12" height="1.5" rx="0.5" fill="currentColor"/>
-            </svg>
-          </button>
-          <button
-            class={`view-toggle-btn ${dashboardView() === "kanban" ? "view-toggle-btn-active" : ""}`}
-            onClick={() => setDashboardView("kanban")}
-            title="Kanban view"
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <rect x="1" y="1" width="3" height="12" rx="0.5" fill="currentColor"/>
-              <rect x="5.5" y="1" width="3" height="8" rx="0.5" fill="currentColor"/>
-              <rect x="10" y="1" width="3" height="10" rx="0.5" fill="currentColor"/>
-            </svg>
-          </button>
-          <button
-            class={`view-toggle-btn ${dashboardView() === "graph" ? "view-toggle-btn-active" : ""}`}
-            onClick={() => setDashboardView("graph")}
-            title="Dependency graph"
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <circle cx="3" cy="3" r="2" fill="currentColor"/>
-              <circle cx="11" cy="3" r="2" fill="currentColor"/>
-              <circle cx="7" cy="11" r="2" fill="currentColor"/>
-              <line x1="4.5" y1="4" x2="6" y2="9.5" stroke="currentColor" stroke-width="1.2"/>
-              <line x1="9.5" y1="4" x2="8" y2="9.5" stroke="currentColor" stroke-width="1.2"/>
-            </svg>
-          </button>
-          <button
-            class={`view-toggle-btn ${dashboardView() === "timeline" ? "view-toggle-btn-active" : ""}`}
-            onClick={() => setDashboardView("timeline")}
-            title="Timeline view"
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <rect x="1" y="2" width="8" height="2" rx="1" fill="currentColor"/>
-              <rect x="4" y="6" width="9" height="2" rx="1" fill="currentColor"/>
-              <rect x="2" y="10" width="6" height="2" rx="1" fill="currentColor"/>
-            </svg>
-          </button>
+      <Show when={projectName()} fallback={
+        <div class="dashboard-empty-state">
+          <span class="dashboard-empty-text">Select a project from the sidebar</span>
         </div>
-        <div class="dashboard-filters">
-          <div class="filter-status-group">
-            <For each={["all", "todo", "in-progress", "done"] as StatusFilter[]}>
-              {(s) => (
-                <button
-                  class={`filter-status-btn ${statusFilter() === s ? "filter-status-btn-active" : ""} ${s !== "all" ? `filter-status-btn-${s}` : ""}`}
-                  onClick={() => setStatusFilter(s)}
-                >
-                  {s === "all" ? "All" : STATUS_LABELS[s]}
-                </button>
-              )}
-            </For>
-          </div>
-          <input
-            class="filter-search"
-            type="text"
-            placeholder="Search tasks..."
-            value={searchFilter()}
-            onInput={(e) => setSearchFilter(e.currentTarget.value)}
-          />
-          <Show when={hasActiveFilters()}>
-            <button class="filter-clear" onClick={() => { setStatusFilter("all"); setSearchFilter(""); }} title="Clear filters">
-              &times;
+      }>
+        <div class="dashboard-header">
+          <h1 class="dashboard-title">{projectName()}</h1>
+          <div class="dashboard-view-toggle">
+            <button
+              class={`view-toggle-btn ${dashboardView() === "list" ? "view-toggle-btn-active" : ""}`}
+              onClick={() => setDashboardView("list")}
+              title="List view"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <rect x="1" y="2" width="12" height="1.5" rx="0.5" fill="currentColor"/>
+                <rect x="1" y="6.25" width="12" height="1.5" rx="0.5" fill="currentColor"/>
+                <rect x="1" y="10.5" width="12" height="1.5" rx="0.5" fill="currentColor"/>
+              </svg>
             </button>
-          </Show>
+            <button
+              class={`view-toggle-btn ${dashboardView() === "kanban" ? "view-toggle-btn-active" : ""}`}
+              onClick={() => setDashboardView("kanban")}
+              title="Kanban view"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <rect x="1" y="1" width="3" height="12" rx="0.5" fill="currentColor"/>
+                <rect x="5.5" y="1" width="3" height="8" rx="0.5" fill="currentColor"/>
+                <rect x="10" y="1" width="3" height="10" rx="0.5" fill="currentColor"/>
+              </svg>
+            </button>
+            <button
+              class={`view-toggle-btn ${dashboardView() === "graph" ? "view-toggle-btn-active" : ""}`}
+              onClick={() => setDashboardView("graph")}
+              title="Dependency graph"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <circle cx="3" cy="3" r="2" fill="currentColor"/>
+                <circle cx="11" cy="3" r="2" fill="currentColor"/>
+                <circle cx="7" cy="11" r="2" fill="currentColor"/>
+                <line x1="4.5" y1="4" x2="6" y2="9.5" stroke="currentColor" stroke-width="1.2"/>
+                <line x1="9.5" y1="4" x2="8" y2="9.5" stroke="currentColor" stroke-width="1.2"/>
+              </svg>
+            </button>
+            <button
+              class={`view-toggle-btn ${dashboardView() === "timeline" ? "view-toggle-btn-active" : ""}`}
+              onClick={() => setDashboardView("timeline")}
+              title="Timeline view"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <rect x="1" y="2" width="8" height="2" rx="1" fill="currentColor"/>
+                <rect x="4" y="6" width="9" height="2" rx="1" fill="currentColor"/>
+                <rect x="2" y="10" width="6" height="2" rx="1" fill="currentColor"/>
+              </svg>
+            </button>
+          </div>
+          <div class="dashboard-filters">
+            <div class="filter-status-group">
+              <For each={["all", "todo", "in-progress", "done"] as StatusFilter[]}>
+                {(s) => (
+                  <button
+                    class={`filter-status-btn ${statusFilter() === s ? "filter-status-btn-active" : ""} ${s !== "all" ? `filter-status-btn-${s}` : ""}`}
+                    onClick={() => setStatusFilter(s)}
+                  >
+                    {s === "all" ? "All" : STATUS_LABELS[s]}
+                  </button>
+                )}
+              </For>
+            </div>
+            <input
+              class="filter-search"
+              type="text"
+              placeholder="Search tasks..."
+              value={searchFilter()}
+              onInput={(e) => setSearchFilter(e.currentTarget.value)}
+            />
+            <Show when={hasActiveFilters()}>
+              <button class="filter-clear" onClick={() => { setStatusFilter("all"); setSearchFilter(""); }} title="Clear filters">
+                &times;
+              </button>
+            </Show>
+          </div>
+          <button class="dashboard-refresh" onClick={() => loadProjects()} title="Refresh">
+            &#x21bb;
+          </button>
         </div>
-        <button class="dashboard-refresh" onClick={() => loadProjects()} title="Refresh">
-          &#x21bb;
-        </button>
-      </div>
-      <Show when={!projectsLoading()} fallback={<div class="dashboard-loading">Loading projects...</div>}>
-        <Show when={dashboardView() === "kanban"} fallback={
-          <Show when={dashboardView() === "graph"} fallback={
-            <Show when={dashboardView() === "timeline"} fallback={
-              <div class="project-grid">
-                <For each={projectList()}>
-                  {(state) => <ProjectCard state={state} />}
-                </For>
-              </div>
+        <Show when={!projectsLoading()} fallback={<div class="dashboard-loading">Loading projects...</div>}>
+          <Show when={dashboardView() === "kanban"} fallback={
+            <Show when={dashboardView() === "graph"} fallback={
+              <Show when={dashboardView() === "timeline"} fallback={
+                <ProjectTaskList />
+              }>
+                <TaskTimeline />
+              </Show>
             }>
-              <TaskTimeline />
+              <DependencyGraph />
             </Show>
           }>
-            <DependencyGraph />
+            <KanbanBoard />
           </Show>
-        }>
-          <KanbanBoard />
         </Show>
-      </Show>
-      {/* Bulk Action Bar */}
-      <Show when={selectionCount() > 0}>
-        <div class="bulk-action-bar">
-          <span class="bulk-action-count">{selectionCount()} selected</span>
-          <div class="bulk-action-group">
-            <button class="bulk-action-btn" onClick={() => handleBulkStatus("todo")}>
-              <span class="status-dot status-dot-todo" /> Todo
-            </button>
-            <button class="bulk-action-btn" onClick={() => handleBulkStatus("in-progress")}>
-              <span class="status-dot status-dot-in-progress" /> In Progress
-            </button>
-            <button class="bulk-action-btn" onClick={() => handleBulkStatus("done")}>
-              <span class="status-dot status-dot-done" /> Done
-            </button>
+        {/* Bulk Action Bar */}
+        <Show when={selectionCount() > 0}>
+          <div class="bulk-action-bar">
+            <span class="bulk-action-count">{selectionCount()} selected</span>
+            <div class="bulk-action-group">
+              <button class="bulk-action-btn" onClick={() => handleBulkStatus("todo")}>
+                <span class="status-dot status-dot-todo" /> Todo
+              </button>
+              <button class="bulk-action-btn" onClick={() => handleBulkStatus("in-progress")}>
+                <span class="status-dot status-dot-in-progress" /> In Progress
+              </button>
+              <button class="bulk-action-btn" onClick={() => handleBulkStatus("done")}>
+                <span class="status-dot status-dot-done" /> Done
+              </button>
+            </div>
+            <button class="bulk-action-btn bulk-action-delete" onClick={handleBulkDelete}>Delete</button>
+            <div class="bulk-action-sep" />
+            <button class="bulk-action-btn" onClick={() => selectAllTasks(allVisibleTaskIds())}>Select All</button>
+            <button class="bulk-action-btn" onClick={clearSelection}>Deselect All</button>
           </div>
-          <button class="bulk-action-btn bulk-action-delete" onClick={handleBulkDelete}>Delete</button>
-          <div class="bulk-action-sep" />
-          <button class="bulk-action-btn" onClick={() => selectAllTasks(allVisibleTaskIds())}>Select All</button>
-          <button class="bulk-action-btn" onClick={clearSelection}>Deselect All</button>
-        </div>
+        </Show>
       </Show>
     </div>
   );
 }
 
-function ProjectCard(props: { state: ReturnType<typeof getProjectList>[0] }) {
+function ProjectTaskList() {
   const [addingTask, setAddingTask] = createSignal(false);
   const [showTemplatePicker, setShowTemplatePicker] = createSignal(false);
   const [newTaskName, setNewTaskName] = createSignal("");
@@ -225,11 +224,20 @@ function ProjectCard(props: { state: ReturnType<typeof getProjectList>[0] }) {
   const [newTaskAction, setNewTaskAction] = createSignal("");
   const [newTaskVerify, setNewTaskVerify] = createSignal("");
   const [newTaskResult, setNewTaskResult] = createSignal("");
-  const counts = createMemo(() => getTaskCounts(props.state.project.name));
-  const rootTasks = createMemo(() => getFilteredRootTasks(props.state.project.name));
-  const total = createMemo(() => counts().todo + counts().inProgress + counts().done);
-  const expanded = () => props.state.expanded;
-  const loading = () => props.state.loading;
+
+  const projectState = createMemo(() => getActiveProjectState());
+  const projectName = createMemo(() => activeProject());
+  const rootTasks = createMemo(() => {
+    const name = projectName();
+    if (!name) return [];
+    return getFilteredRootTasks(name);
+  });
+  const counts = createMemo(() => {
+    const name = projectName();
+    if (!name) return { todo: 0, inProgress: 0, done: 0 };
+    return getTaskCounts(name);
+  });
+  const loading = createMemo(() => projectState()?.loading ?? false);
 
   const resetAddForm = () => {
     setNewTaskName("");
@@ -260,9 +268,10 @@ function ProjectCard(props: { state: ReturnType<typeof getProjectList>[0] }) {
   };
 
   const handleAddTask = async () => {
+    const state = projectState();
     const name = newTaskName().trim();
-    if (!name) return;
-    await addTask(props.state.project.name, props.state.project.path, name, {
+    if (!name || !state) return;
+    await addTask(state.project.name, state.project.path, name, {
       description: newTaskDesc().trim() || undefined,
       action: newTaskAction().trim() || undefined,
       verify: newTaskVerify().trim() || undefined,
@@ -271,150 +280,137 @@ function ProjectCard(props: { state: ReturnType<typeof getProjectList>[0] }) {
     resetAddForm();
   };
 
+  const handleAddClick = () => {
+    if (templates().length > 0) {
+      setShowTemplatePicker(true);
+    } else {
+      applyTemplate(null);
+    }
+  };
+
   return (
-    <div class={`project-card ${expanded() ? "project-card-expanded" : ""}`}>
-      <div class="project-card-header" onClick={() => toggleProject(props.state.project.name)}>
-        <span class="project-card-chevron">{expanded() ? "\u25BC" : "\u25B6"}</span>
-        <span class="project-card-name">{props.state.project.name}</span>
-        <Show when={props.state.project.has_limbo}>
-          <span class="project-card-badges">
-            <Show when={counts().inProgress > 0}>
-              <span class="badge badge-in-progress">{counts().inProgress} in progress</span>
-            </Show>
-            <Show when={counts().todo > 0}>
-              <span class="badge badge-todo">{counts().todo} todo</span>
-            </Show>
-            <Show when={counts().done > 0}>
-              <span class="badge badge-done">{counts().done} done</span>
-            </Show>
-            <Show when={total() === 0}>
-              <span class="project-card-no-tasks">0 tasks</span>
-            </Show>
-          </span>
-          <button
-            class="project-add-btn"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!expanded()) toggleProject(props.state.project.name);
-              if (templates().length > 0) {
-                setShowTemplatePicker(true);
-              } else {
-                applyTemplate(null);
-              }
-            }}
-            title="Add task"
-          >+</button>
-        </Show>
-        <Show when={!props.state.project.has_limbo}>
-          <span class="project-card-no-tasks">no limbo</span>
+    <div class="project-task-list">
+      <div class="project-task-list-header">
+        <span class="project-card-badges">
+          <Show when={counts().inProgress > 0}>
+            <span class="badge badge-in-progress">{counts().inProgress} in progress</span>
+          </Show>
+          <Show when={counts().todo > 0}>
+            <span class="badge badge-todo">{counts().todo} todo</span>
+          </Show>
+          <Show when={counts().done > 0}>
+            <span class="badge badge-done">{counts().done} done</span>
+          </Show>
+        </span>
+        <Show when={projectState()?.project.has_limbo}>
+          <button class="project-add-btn" onClick={handleAddClick} title="Add task">+</button>
         </Show>
       </div>
-      <Show when={expanded() && props.state.project.has_limbo}>
-        <div class="project-card-body">
-          <Show when={loading()}>
-            <div class="task-loading">Loading...</div>
-          </Show>
-          <Show when={!loading() && rootTasks().length === 0 && !addingTask()}>
-            <div class="task-empty">No matching tasks</div>
-          </Show>
-          <Show when={!loading() && rootTasks().length > 0}>
-            <div class="task-list">
-              <For each={rootTasks()}>
-                {(task) => (
-                  <TaskItem
-                    task={task}
-                    projectName={props.state.project.name}
-                    projectPath={props.state.project.path}
-                    depth={0}
-                  />
-                )}
-              </For>
-            </div>
-          </Show>
-          <Show when={showTemplatePicker()}>
-            <div class="template-picker">
-              <button class="template-picker-option" onClick={() => applyTemplate(null)}>
-                <span class="template-picker-name">Blank task</span>
-                <span class="template-picker-desc">Start from scratch</span>
+      <Show when={loading()}>
+        <div class="task-loading">Loading...</div>
+      </Show>
+      <Show when={!loading() && rootTasks().length === 0 && !addingTask()}>
+        <div class="task-empty">No matching tasks</div>
+      </Show>
+      <Show when={!loading() && rootTasks().length > 0}>
+        <div class="task-list">
+          <For each={rootTasks()}>
+            {(task) => {
+              const state = projectState()!;
+              return (
+                <TaskItem
+                  task={task}
+                  projectName={state.project.name}
+                  projectPath={state.project.path}
+                  depth={0}
+                />
+              );
+            }}
+          </For>
+        </div>
+      </Show>
+      <Show when={showTemplatePicker()}>
+        <div class="template-picker">
+          <button class="template-picker-option" onClick={() => applyTemplate(null)}>
+            <span class="template-picker-name">Blank task</span>
+            <span class="template-picker-desc">Start from scratch</span>
+          </button>
+          <For each={templates()}>
+            {(tmpl) => (
+              <button class="template-picker-option" onClick={() => applyTemplate(tmpl)}>
+                <span class="template-picker-name">{tmpl.name}</span>
+                <Show when={tmpl.description}>
+                  <span class="template-picker-desc">{tmpl.description}</span>
+                </Show>
               </button>
-              <For each={templates()}>
-                {(tmpl) => (
-                  <button class="template-picker-option" onClick={() => applyTemplate(tmpl)}>
-                    <span class="template-picker-name">{tmpl.name}</span>
-                    <Show when={tmpl.description}>
-                      <span class="template-picker-desc">{tmpl.description}</span>
-                    </Show>
-                  </button>
-                )}
-              </For>
-              <button class="template-picker-cancel" onClick={() => setShowTemplatePicker(false)}>&times;</button>
-            </div>
-          </Show>
-          <Show when={addingTask()}>
-            <div class="add-task-form add-task-form-expanded">
-              <input
-                class="add-task-input"
-                type="text"
-                placeholder="Task name..."
-                value={newTaskName()}
-                onInput={(e) => setNewTaskName(e.currentTarget.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && e.metaKey) handleAddTask();
-                  if (e.key === "Escape") resetAddForm();
-                }}
-                ref={(el) => setTimeout(() => el.focus(), 0)}
-              />
-              <input
-                class="add-task-input"
-                type="text"
-                placeholder="Description (optional)..."
-                value={newTaskDesc()}
-                onInput={(e) => setNewTaskDesc(e.currentTarget.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && e.metaKey) handleAddTask();
-                  if (e.key === "Escape") resetAddForm();
-                }}
-              />
-              <input
-                class="add-task-input"
-                type="text"
-                placeholder="Action..."
-                value={newTaskAction()}
-                onInput={(e) => setNewTaskAction(e.currentTarget.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && e.metaKey) handleAddTask();
-                  if (e.key === "Escape") resetAddForm();
-                }}
-              />
-              <input
-                class="add-task-input"
-                type="text"
-                placeholder="Verify..."
-                value={newTaskVerify()}
-                onInput={(e) => setNewTaskVerify(e.currentTarget.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && e.metaKey) handleAddTask();
-                  if (e.key === "Escape") resetAddForm();
-                }}
-              />
-              <input
-                class="add-task-input"
-                type="text"
-                placeholder="Result..."
-                value={newTaskResult()}
-                onInput={(e) => setNewTaskResult(e.currentTarget.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && e.metaKey) handleAddTask();
-                  if (e.key === "Escape") resetAddForm();
-                }}
-              />
-              <div class="add-task-actions">
-                <button class="add-task-submit" onClick={handleAddTask}>Add</button>
-                <button class="add-task-cancel" onClick={resetAddForm}>&times;</button>
-                <span class="add-task-hint">Cmd+Enter to submit</span>
-              </div>
-            </div>
-          </Show>
+            )}
+          </For>
+          <button class="template-picker-cancel" onClick={() => setShowTemplatePicker(false)}>&times;</button>
+        </div>
+      </Show>
+      <Show when={addingTask()}>
+        <div class="add-task-form add-task-form-expanded">
+          <input
+            class="add-task-input"
+            type="text"
+            placeholder="Task name..."
+            value={newTaskName()}
+            onInput={(e) => setNewTaskName(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && e.metaKey) handleAddTask();
+              if (e.key === "Escape") resetAddForm();
+            }}
+            ref={(el) => setTimeout(() => el.focus(), 0)}
+          />
+          <input
+            class="add-task-input"
+            type="text"
+            placeholder="Description (optional)..."
+            value={newTaskDesc()}
+            onInput={(e) => setNewTaskDesc(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && e.metaKey) handleAddTask();
+              if (e.key === "Escape") resetAddForm();
+            }}
+          />
+          <input
+            class="add-task-input"
+            type="text"
+            placeholder="Action..."
+            value={newTaskAction()}
+            onInput={(e) => setNewTaskAction(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && e.metaKey) handleAddTask();
+              if (e.key === "Escape") resetAddForm();
+            }}
+          />
+          <input
+            class="add-task-input"
+            type="text"
+            placeholder="Verify..."
+            value={newTaskVerify()}
+            onInput={(e) => setNewTaskVerify(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && e.metaKey) handleAddTask();
+              if (e.key === "Escape") resetAddForm();
+            }}
+          />
+          <input
+            class="add-task-input"
+            type="text"
+            placeholder="Result..."
+            value={newTaskResult()}
+            onInput={(e) => setNewTaskResult(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && e.metaKey) handleAddTask();
+              if (e.key === "Escape") resetAddForm();
+            }}
+          />
+          <div class="add-task-actions">
+            <button class="add-task-submit" onClick={handleAddTask}>Add</button>
+            <button class="add-task-cancel" onClick={resetAddForm}>&times;</button>
+            <span class="add-task-hint">Cmd+Enter to submit</span>
+          </div>
         </div>
       </Show>
     </div>

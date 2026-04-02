@@ -59,6 +59,7 @@ export const [statusFilter, setStatusFilter] = createSignal<StatusFilter>("all")
 export const [searchFilter, setSearchFilter] = createSignal("");
 export const [selectedTasks, setSelectedTasks] = createSignal<Set<string>>(new Set());
 export const [templates, setTemplates] = createSignal<TaskTemplate[]>([]);
+export const [activeProject, setActiveProject] = createSignal<string | null>(null);
 
 // --- Selection Helpers ---
 
@@ -111,6 +112,12 @@ export function getTaskCounts(projectName: string): { todo: number; inProgress: 
     inProgress: tasks.filter((t) => t.status === "in-progress").length,
     done: tasks.filter((t) => t.status === "done").length,
   };
+}
+
+export function getActiveProjectState(): ProjectState | null {
+  const name = activeProject();
+  if (!name) return null;
+  return projects[name] || null;
 }
 
 function matchesSearch(task: Task, query: string): boolean {
