@@ -189,14 +189,7 @@ export default function TerminalPane(props: Props) {
     }
 
     // Load custom env vars from ordis config, then spawn PTY
-    (async () => {
-      let customEnv: Record<string, string> = {};
-      try {
-        const raw = await invoke<string>("read_ordis_config");
-        const config = JSON.parse(raw);
-        customEnv = config.env ?? {};
-      } catch { /* proceed without custom env */ }
-
+    function spawnWithEnv(customEnv: Record<string, string>) {
       try {
         pty = spawn("/bin/zsh", ["-l", "-c", command], {
           cols: term!.cols,
@@ -287,7 +280,14 @@ export default function TerminalPane(props: Props) {
       pty.onExit(() => {
         closePane(props.paneId);
       });
-    })();
+    }
+
+    invoke<string>("read_ordis_config")
+      .then((raw) => {
+        const config = JSON.parse(raw);
+        spawnWithEnv(config.env ?? {});
+      })
+      .catch(() => spawnWithEnv({}));
 
     resizeObserver = new ResizeObserver(() => {
       if (fitAddon && containerRef.offsetWidth > 0 && containerRef.offsetHeight > 0) {
