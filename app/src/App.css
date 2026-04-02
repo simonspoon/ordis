@@ -354,6 +354,26 @@ body {
   margin-left: auto;
 }
 
+/* Pane close button in toolbar */
+.pane-close-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 5px;
+  border-radius: 3px;
+  margin-left: 6px;
+  opacity: 0.5;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+}
+.pane-close-btn:hover {
+  opacity: 1;
+  color: var(--error);
+  background: rgba(229, 85, 85, 0.15);
+}
+
 /* Terminal search bar */
 .pane-search-bar {
   display: flex;

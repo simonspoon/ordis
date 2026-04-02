@@ -177,24 +177,89 @@ export default function TerminalPane(props: Props) {
 
     const currentCwd = paneCwd() || undefined;
     const pane = panes[props.paneId];
-    let command = "claude --dangerously-skip-permissions";
+    let initialCommand = "claude --dangerously-skip-permissions";
     if (pane?.agent) {
-      command += ` --agent ${shellEscape(pane.agent)}`;
+      initialCommand += ` --agent ${shellEscape(pane.agent)}`;
     }
     if (pane?.effort) {
-      command += ` --effort ${shellEscape(pane.effort)}`;
+      initialCommand += ` --effort ${shellEscape(pane.effort)}`;
     }
     if (pane?.prompt) {
-      command += ` ${shellEscape(pane.prompt)}`;
+      initialCommand += ` ${shellEscape(pane.prompt)}`;
     }
 
-    // Load custom env vars from ordis config, then spawn PTY
-    function spawnWithEnv(customEnv: Record<string, string>, defaultCwd?: string) {
+    // Pending snapshots: when a Read is detected, snapshot the file immediately
+    // so the pre-edit content is captured BEFORE any subsequent edit lands on disk.
+    const pendingSnapshots = new Map<string, string>();
+    const SNAPSHOT_TTL_MS = 60_000;
+    const snapshotTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+    bus = createSessionEventBus();
+
+    bus.on("file_read", (e) => {
+      // Snapshot immediately — Claude reads before editing
+      invoke<{ content: string }>("snapshot_file", { path: e.path })
+        .then((snap) => {
+          pendingSnapshots.set(e.path, snap.content);
+          if (snapshotTimers.has(e.path)) clearTimeout(snapshotTimers.get(e.path));
+          snapshotTimers.set(e.path, setTimeout(() => {
+            pendingSnapshots.delete(e.path);
+            snapshotTimers.delete(e.path);
+          }, SNAPSHOT_TTL_MS));
+        })
+        .catch(() => { /* file may not exist yet */ });
+
+      // Also add as artifact (old code added reads unconditionally)
+      const ext = e.path.split(".").pop() || "";
+      addArtifact(props.paneId, {
+        filePath: e.path,
+        fileName: e.path.split("/").pop() || e.path,
+        operation: "read",
+        viewerType: mapExtToViewer(ext),
+      });
+    });
+
+    bus.on("file_written", (e) => {
+      const ext = e.path.split(".").pop() || "";
+      const viewerType = mapExtToViewer(ext);
+      const preEditContent = (e.operation === "edited")
+        ? pendingSnapshots.get(e.path)
+        : undefined;
+
+      addArtifact(props.paneId, {
+        filePath: e.path,
+        fileName: e.path.split("/").pop() || e.path,
+        operation: e.operation,
+        viewerType,
+        preEditContent,
+      });
+
+      // Clean up used snapshot
+      if (e.operation === "edited" && pendingSnapshots.has(e.path)) {
+        if (snapshotTimers.has(e.path)) clearTimeout(snapshotTimers.get(e.path));
+        pendingSnapshots.delete(e.path);
+        snapshotTimers.delete(e.path);
+      }
+    });
+
+    // Register terminal I/O handlers once (they reference `pty` via closure)
+    term.onData((data: string) => {
+      if (pty) pty.write(data);
+    });
+
+    term.onResize(({ cols, rows }) => {
+      if (cols > 0 && rows > 0 && pty) {
+        pty.resize(cols, rows);
+      }
+    });
+
+    function attachPty(customEnv: Record<string, string>, cwd?: string, command?: string) {
       try {
-        pty = spawn("/bin/zsh", ["-l", "-c", command], {
+        // Spawn an interactive login shell (persists after subprocess exits)
+        pty = spawn("/bin/zsh", ["-l"], {
           cols: term!.cols,
           rows: term!.rows,
-          cwd: currentCwd || defaultCwd || undefined,
+          cwd: cwd || undefined,
           name: "xterm-256color",
           env: {
             ...customEnv,
@@ -208,78 +273,29 @@ export default function TerminalPane(props: Props) {
         return;
       }
 
-      // Pending snapshots: when a Read is detected, snapshot the file immediately
-      // so the pre-edit content is captured BEFORE any subsequent edit lands on disk.
-      const pendingSnapshots = new Map<string, string>();
-      const SNAPSHOT_TTL_MS = 60_000;
-      const snapshotTimers = new Map<string, ReturnType<typeof setTimeout>>();
-
-      bus = createSessionEventBus();
-
       pty.onData((data: Uint8Array) => {
         term!.write(new Uint8Array(data));
         bus!.feed(data);
       });
 
-      bus.on("file_read", (e) => {
-        // Snapshot immediately — Claude reads before editing
-        invoke<{ content: string }>("snapshot_file", { path: e.path })
-          .then((snap) => {
-            pendingSnapshots.set(e.path, snap.content);
-            if (snapshotTimers.has(e.path)) clearTimeout(snapshotTimers.get(e.path));
-            snapshotTimers.set(e.path, setTimeout(() => {
-              pendingSnapshots.delete(e.path);
-              snapshotTimers.delete(e.path);
-            }, SNAPSHOT_TTL_MS));
-          })
-          .catch(() => { /* file may not exist yet */ });
-
-        // Also add as artifact (old code added reads unconditionally)
-        const ext = e.path.split(".").pop() || "";
-        addArtifact(props.paneId, {
-          filePath: e.path,
-          fileName: e.path.split("/").pop() || e.path,
-          operation: "read",
-          viewerType: mapExtToViewer(ext),
-        });
-      });
-
-      bus.on("file_written", (e) => {
-        const ext = e.path.split(".").pop() || "";
-        const viewerType = mapExtToViewer(ext);
-        const preEditContent = (e.operation === "edited")
-          ? pendingSnapshots.get(e.path)
-          : undefined;
-
-        addArtifact(props.paneId, {
-          filePath: e.path,
-          fileName: e.path.split("/").pop() || e.path,
-          operation: e.operation,
-          viewerType,
-          preEditContent,
-        });
-
-        // Clean up used snapshot
-        if (e.operation === "edited" && pendingSnapshots.has(e.path)) {
-          if (snapshotTimers.has(e.path)) clearTimeout(snapshotTimers.get(e.path));
-          pendingSnapshots.delete(e.path);
-          snapshotTimers.delete(e.path);
-        }
-      });
-
-      term!.onData((data: string) => {
-        pty!.write(data);
-      });
-
-      term!.onResize(({ cols, rows }) => {
-        if (cols > 0 && rows > 0) {
-          pty!.resize(cols, rows);
-        }
-      });
-
       pty.onExit(() => {
+        // Shell exited (user typed "exit") — close the pane.
+        // Subprocess exits (Claude Code) don't reach here because
+        // the shell is spawned as a persistent login shell.
         closePane(props.paneId);
       });
+
+      // Write the initial command to the shell after it's ready
+      if (command) {
+        setTimeout(() => {
+          if (pty) pty.write(command + "\n");
+        }, 150);
+      }
+    }
+
+    // Load custom env vars from ordis config, then spawn PTY
+    function spawnWithEnv(customEnv: Record<string, string>, defaultCwd?: string) {
+      attachPty(customEnv, currentCwd || defaultCwd, initialCommand);
     }
 
     invoke<string>("read_ordis_config")
@@ -377,6 +393,9 @@ export default function TerminalPane(props: Props) {
             </div>
           </Show>
         </div>
+        <button class="pane-close-btn" onClick={() => closePane(props.paneId)} title="Close pane">
+          x
+        </button>
       </div>
       <Show when={searchOpen()}>
         <div class="pane-search-bar">
