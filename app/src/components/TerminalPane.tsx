@@ -189,12 +189,12 @@ export default function TerminalPane(props: Props) {
     }
 
     // Load custom env vars from ordis config, then spawn PTY
-    function spawnWithEnv(customEnv: Record<string, string>) {
+    function spawnWithEnv(customEnv: Record<string, string>, defaultCwd?: string) {
       try {
         pty = spawn("/bin/zsh", ["-l", "-c", command], {
           cols: term!.cols,
           rows: term!.rows,
-          cwd: currentCwd,
+          cwd: currentCwd || defaultCwd || undefined,
           name: "xterm-256color",
           env: {
             ...customEnv,
@@ -285,7 +285,7 @@ export default function TerminalPane(props: Props) {
     invoke<string>("read_ordis_config")
       .then((raw) => {
         const config = JSON.parse(raw);
-        spawnWithEnv(config.env ?? {});
+        spawnWithEnv(config.env ?? {}, config.defaultCwd);
       })
       .catch(() => spawnWithEnv({}));
 

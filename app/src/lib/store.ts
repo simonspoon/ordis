@@ -298,13 +298,19 @@ export function splitPane(direction: "horizontal" | "vertical") {
 }
 
 export function closePane(paneId: string) {
-  if (zoomedPaneId() === paneId) setZoomedPaneId(null);
-  setPanes(produce((p) => { delete p[paneId]; }));
-  setLayout((prev) => (prev ? removeLeaf(prev, paneId) : null));
-  if (activePaneId() === paneId) {
+  batch(() => {
+    if (zoomedPaneId() === paneId) setZoomedPaneId(null);
+    setPanes(produce((p) => { delete p[paneId]; }));
+    setLayout((prev) => (prev ? removeLeaf(prev, paneId) : null));
     const remaining = getLeafPaneIds();
-    setActivePaneId(remaining.length > 0 ? remaining[0] : "");
-  }
+    if (activePaneId() === paneId) {
+      setActivePaneId(remaining.length > 0 ? remaining[0] : "");
+    }
+    // If tab is now empty, auto-spawn a fresh session
+    if (remaining.length === 0) {
+      createPane("");
+    }
+  });
 }
 
 export function updateSplitRatio(splitId: string, ratio: number) {
