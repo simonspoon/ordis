@@ -159,7 +159,7 @@ fn get_cwd(state: State<'_, AppState>) -> Result<String, String> {
 
 #[tauri::command]
 fn set_cwd(cwd: String, state: State<'_, AppState>) -> Result<(), String> {
-    let path = PathBuf::from(&cwd);
+    let path = expand_tilde(&cwd);
     if !path.is_dir() {
         return Err(format!("Not a directory: {cwd}"));
     }
