@@ -291,19 +291,14 @@ export default function Settings() {
 
   async function saveOrdisConfig() {
     try {
-      const cwd = ordisDefaultCwd() || undefined;
       await invoke("write_ordis_config", {
         data: JSON.stringify({
-          defaultCwd: cwd,
+          defaultCwd: ordisDefaultCwd() || undefined,
           projects: ordisProjects(),
           profiles: ordisProfiles(),
           env: Object.fromEntries(ordisEnv().filter(e => e.key).map(e => [e.key, e.value])),
         }),
       });
-      // Sync runtime default cwd so new sessions use the updated value
-      if (cwd) {
-        await invoke("set_cwd", { cwd }).catch(() => {});
-      }
       setOrdisDirty(false);
       toast.info("Ordis config saved");
     } catch (e) {

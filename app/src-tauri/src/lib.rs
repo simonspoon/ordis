@@ -152,8 +152,8 @@ struct AppState {
 // --- Commands ---
 
 #[tauri::command]
-fn get_cwd(state: State<'_, AppState>) -> Result<String, String> {
-    let cwd = state.cwd.lock().map_err(|e| e.to_string())?;
+fn get_cwd() -> Result<String, String> {
+    let cwd = resolve_default_cwd();
     Ok(cwd.to_string_lossy().to_string())
 }
 
