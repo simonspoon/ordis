@@ -108,7 +108,7 @@ export default function App() {
       shortcut: "Cmd+W",
       action: () => {
         const active = activePaneId();
-        if (active && getLeafPaneIds().length > 1) closePane(active);
+        if (active) closePane(active);
       },
     });
     registerCommand({
@@ -180,7 +180,8 @@ export default function App() {
       label: "Close Workspace Tab",
       shortcut: "Cmd+Shift+W",
       action: () => {
-        if (getTabs().length > 1) closeTab(getActiveTabId());
+        const id = getActiveTabId();
+        if (id) closeTab(id);
       },
     });
     registerCommand({
@@ -349,7 +350,8 @@ export default function App() {
       }
       if (e.key === "w" && e.shiftKey) {
         e.preventDefault();
-        if (getTabs().length > 1) closeTab(getActiveTabId());
+        const id = getActiveTabId();
+        if (id) closeTab(id);
         return;
       }
       if (e.key === "[" && e.shiftKey) {
@@ -379,7 +381,7 @@ export default function App() {
       } else if (e.key === "w" && !e.shiftKey) {
         e.preventDefault();
         const active = activePaneId();
-        if (active && getLeafPaneIds().length > 1) closePane(active);
+        if (active) closePane(active);
       } else if (e.key >= "3" && e.key <= "9") {
         e.preventDefault();
         const ids = getLeafPaneIds();
@@ -503,18 +505,24 @@ export default function App() {
           </Show>
           <div class="terminal-container">
             <Show
-              when={leafIds().length > 0}
+              when={leafIds().length > 0 && getTabs().length > 0}
               fallback={
                 <div class="empty-state">
                   <span>No sessions</span>
                   <button
                     class="empty-state-btn"
                     onClick={async () => {
-                      const cwd = await invoke<string>("get_cwd");
-                      createPane(cwd);
+                      let cwd = "";
+                      try {
+                        const raw = await invoke<string>("read_ordis_config");
+                        const config = JSON.parse(raw);
+                        cwd = config.defaultCwd || "";
+                      } catch { /* ignore */ }
+                      const name = cwd ? cwd.split("/").pop() || "Session" : "Session";
+                      createTab(name, cwd);
                     }}
                   >
-                    New Session
+                    Create Session
                   </button>
                 </div>
               }

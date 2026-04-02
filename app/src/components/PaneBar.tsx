@@ -1,4 +1,5 @@
 import { For, Show, createSignal } from "solid-js";
+import { invoke } from "@tauri-apps/api/core";
 import {
   panes, activePaneId, setActivePaneId,
   closePane, splitPane, getLeafPaneIds,
@@ -71,9 +72,16 @@ export default function PaneBar() {
     setDragSourceId(null);
   };
 
-  const handleNewTab = () => {
-    const cwd = panes[activePaneId()]?.cwd || "";
-    const name = cwd.split("/").pop() || "New Tab";
+  const handleNewTab = async () => {
+    let cwd = panes[activePaneId()]?.cwd || "";
+    if (!cwd) {
+      try {
+        const raw = await invoke<string>("read_ordis_config");
+        const config = JSON.parse(raw);
+        cwd = config.defaultCwd || "";
+      } catch { /* ignore */ }
+    }
+    const name = cwd ? cwd.split("/").pop() || "New Tab" : "New Tab";
     createTab(name, cwd);
   };
 
@@ -93,17 +101,15 @@ export default function PaneBar() {
               onDblClick={() => handleRenameTab(tab.id, tab.name)}
             >
               <span>{tab.name}</span>
-              <Show when={getTabs().length > 1}>
-                <span
-                  class="workspace-tab-close"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    closeTab(tab.id);
-                  }}
-                >
-                  ×
-                </span>
-              </Show>
+              <span
+                class="workspace-tab-close"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  closeTab(tab.id);
+                }}
+              >
+                ×
+              </span>
             </button>
           )}
         </For>

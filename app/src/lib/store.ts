@@ -306,9 +306,10 @@ export function closePane(paneId: string) {
     if (activePaneId() === paneId) {
       setActivePaneId(remaining.length > 0 ? remaining[0] : "");
     }
-    // If tab is now empty, auto-spawn a fresh session
+    // If tab now has zero panes, close the tab too
     if (remaining.length === 0) {
-      createPane("");
+      const tabId = activeTabId();
+      if (tabId) closeTab(tabId);
     }
   });
 }
@@ -330,7 +331,7 @@ export function createTab(name: string, cwd: string): string {
   const paneId = crypto.randomUUID();
 
   batch(() => {
-    saveCurrentTabState();
+    if (tabs().length > 0) saveCurrentTabState();
 
     setPanes(paneId, {
       id: paneId,
@@ -371,8 +372,6 @@ export function switchTab(tabId: string): void {
 
 export function closeTab(tabId: string): void {
   const allTabs = tabs();
-  if (allTabs.length <= 1) return;
-
   const tabToClose = allTabs.find(t => t.id === tabId);
   if (!tabToClose) return;
 
@@ -384,15 +383,25 @@ export function closeTab(tabId: string): void {
       setPanes(produce(p => { delete p[id]; }));
     }
 
-    // If closing active tab, switch to adjacent first
+    const remaining = allTabs.filter(t => t.id !== tabId);
+
+    // If closing active tab, switch to adjacent or clear state
     if (tabId === activeTabId()) {
-      const idx = allTabs.findIndex(t => t.id === tabId);
-      const nextTab = allTabs[idx + 1] || allTabs[idx - 1];
-      setActiveTabId(nextTab.id);
-      loadTabState(nextTab);
+      if (remaining.length > 0) {
+        const idx = allTabs.findIndex(t => t.id === tabId);
+        const nextTab = remaining[Math.min(idx, remaining.length - 1)];
+        setActiveTabId(nextTab.id);
+        loadTabState(nextTab);
+      } else {
+        // No tabs left — clear live signals for empty state
+        setActiveTabId("");
+        setLayout(null);
+        setActivePaneId("");
+        setZoomedPaneId(null);
+      }
     }
 
-    setTabs(prev => prev.filter(t => t.id !== tabId));
+    setTabs(remaining);
   });
 }
 
