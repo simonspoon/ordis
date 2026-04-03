@@ -6,7 +6,7 @@ import { SearchAddon } from "@xterm/addon-search";
 import { spawn } from "tauri-pty";
 import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
-import { panes, setPaneCwd, closePane, createPane, activePaneId, setActivePaneId } from "../lib/store";
+import { panes, setPaneCwd, setPaneStatus, closePane, createPane, activePaneId, setActivePaneId } from "../lib/store";
 import { toast } from "../lib/toast";
 import { createSessionEventBus } from "../lib/sessionEventBus";
 import { addArtifact } from "../lib/artifacts";
@@ -268,10 +268,15 @@ export default function TerminalPane(props: Props) {
           },
         });
       } catch (e) {
+        setPaneStatus(props.paneId, "error");
+        invoke("update_pane_status", { paneId: props.paneId, status: "error" }).catch(() => {});
         toast.error(`Failed to spawn terminal: ${e}`);
         term!.write(`\r\n\x1b[31mFailed to spawn terminal: ${e}\x1b[0m\r\n`);
         return;
       }
+
+      setPaneStatus(props.paneId, "running");
+      invoke("update_pane_status", { paneId: props.paneId, status: "running" }).catch(() => {});
 
       pty.onData((data: Uint8Array) => {
         term!.write(new Uint8Array(data));
@@ -282,6 +287,8 @@ export default function TerminalPane(props: Props) {
         // Shell exited (user typed "exit") — close the pane.
         // Subprocess exits (Claude Code) don't reach here because
         // the shell is spawned as a persistent login shell.
+        setPaneStatus(props.paneId, "done");
+        invoke("update_pane_status", { paneId: props.paneId, status: "done" }).catch(() => {});
         closePane(props.paneId);
       });
 

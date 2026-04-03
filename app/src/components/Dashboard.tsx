@@ -12,6 +12,7 @@ import {
   selectedTasks, toggleTaskSelection, selectAllTasks, clearSelection,
   templates,
   updateTaskStatus, addTask, editTask, addTaskNote, deleteTask,
+  archiveProject,
   nextStatus, setupTaskListener,
   type Task, type StatusFilter, type TaskTemplate,
 } from "../lib/tasks";
@@ -97,6 +98,18 @@ export default function Dashboard() {
       }>
         <div class="dashboard-header">
           <h1 class="dashboard-title">{projectName()}</h1>
+          <Show when={projectState()?.project.has_limbo}>
+            <button
+              class="dashboard-archive-btn"
+              onClick={() => {
+                const s = projectState();
+                if (s) archiveProject(s.project.name, s.project.path);
+              }}
+              title="Archive done items (limbo prune)"
+            >
+              Archive
+            </button>
+          </Show>
           <div class="dashboard-view-toggle">
             <button
               class={`view-toggle-btn ${dashboardView() === "list" ? "view-toggle-btn-active" : ""}`}

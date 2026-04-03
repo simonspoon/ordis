@@ -6,7 +6,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use tauri::{Emitter, State};
+use tauri::{Emitter, Manager, State};
 use tauri_plugin_notification::NotificationExt;
 
 // --- Config ---
@@ -147,6 +147,7 @@ struct TasksChanged {
 
 struct AppState {
     cwd: Mutex<PathBuf>,
+    pane_statuses: Mutex<HashMap<String, String>>,
 }
 
 // --- Commands ---
@@ -344,6 +345,12 @@ fn unblock_task(
     blocked_id: String,
 ) -> Result<Vec<Task>, String> {
     let args: Vec<String> = vec!["unblock".into(), blocker_id, blocked_id];
+    run_limbo_mutation(&project_path, &args)
+}
+
+#[tauri::command]
+fn archive_project(project_path: String) -> Result<Vec<Task>, String> {
+    let args: Vec<String> = vec!["prune".into()];
     run_limbo_mutation(&project_path, &args)
 }
 
@@ -1349,6 +1356,44 @@ fn watch_tasks(handle: tauri::AppHandle) {
     }
 }
 
+// --- Pane Status ---
+
+#[derive(Serialize, Clone)]
+struct PaneStatusInfo {
+    pane_id: String,
+    status: String,
+}
+
+#[tauri::command]
+fn update_pane_status(
+    pane_id: String,
+    status: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let mut statuses = state.pane_statuses.lock().map_err(|e| e.to_string())?;
+    statuses.insert(pane_id, status);
+    Ok(())
+}
+
+#[tauri::command]
+fn remove_pane_status(pane_id: String, state: State<'_, AppState>) -> Result<(), String> {
+    let mut statuses = state.pane_statuses.lock().map_err(|e| e.to_string())?;
+    statuses.remove(&pane_id);
+    Ok(())
+}
+
+#[tauri::command]
+fn get_pane_status(
+    pane_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<PaneStatusInfo>, String> {
+    let statuses = state.pane_statuses.lock().map_err(|e| e.to_string())?;
+    Ok(statuses.get(&pane_id).map(|status| PaneStatusInfo {
+        pane_id: pane_id.clone(),
+        status: status.clone(),
+    }))
+}
+
 // --- IPC ---
 
 #[cfg(unix)]
@@ -1429,6 +1474,15 @@ struct LaunchRequest {
     prompt: Option<String>,
 }
 
+#[derive(Deserialize)]
+#[serde(tag = "type")]
+enum SocketMessage {
+    #[serde(rename = "launch")]
+    Launch(LaunchRequest),
+    #[serde(rename = "status")]
+    Status { pane_id: String },
+}
+
 #[cfg(unix)]
 fn start_socket_listener(handle: tauri::AppHandle) {
     use std::io::{Read as _, Write as _};
@@ -1458,13 +1512,40 @@ fn start_socket_listener(handle: tauri::AppHandle) {
                 continue;
             }
 
-            match serde_json::from_str::<LaunchRequest>(&buf) {
-                Ok(req) => {
+            match serde_json::from_str::<SocketMessage>(&buf) {
+                Ok(SocketMessage::Launch(req)) => {
                     let _ = handle.emit("launch-session", req);
                     let _ = stream.write_all(b"ok");
                 }
+                Ok(SocketMessage::Status { pane_id }) => {
+                    let state: tauri::State<'_, AppState> = handle.state::<AppState>();
+                    let response = match state.pane_statuses.lock() {
+                        Ok(statuses) => match statuses.get(&pane_id) {
+                            Some(status) => serde_json::json!({
+                                "pane_id": pane_id,
+                                "status": status,
+                            }),
+                            None => serde_json::json!({
+                                "error": "pane not found",
+                            }),
+                        },
+                        Err(_) => serde_json::json!({
+                            "error": "internal error",
+                        }),
+                    };
+                    let _ = stream.write_all(response.to_string().as_bytes());
+                }
                 Err(_) => {
-                    let _ = stream.write_all(b"error");
+                    // Backward compat: try parsing as a bare LaunchRequest
+                    match serde_json::from_str::<LaunchRequest>(&buf) {
+                        Ok(req) => {
+                            let _ = handle.emit("launch-session", req);
+                            let _ = stream.write_all(b"ok");
+                        }
+                        Err(_) => {
+                            let _ = stream.write_all(b"error");
+                        }
+                    }
                 }
             }
         }
@@ -1488,6 +1569,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .manage(AppState {
             cwd: Mutex::new(resolve_default_cwd()),
+            pane_statuses: Mutex::new(HashMap::new()),
         })
         .invoke_handler(tauri::generate_handler![
             get_cwd,
@@ -1502,6 +1584,7 @@ pub fn run() {
             delete_task,
             block_task,
             unblock_task,
+            archive_project,
             save_session,
             load_session,
             check_startup,
@@ -1531,6 +1614,9 @@ pub fn run() {
             apply_permission_profile,
             read_ordis_config,
             write_ordis_config,
+            update_pane_status,
+            remove_pane_status,
+            get_pane_status,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

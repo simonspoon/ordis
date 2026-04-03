@@ -416,6 +416,21 @@ export async function unblockTask(
   }
 }
 
+export async function archiveProject(
+  projectName: string,
+  projectPath: string,
+) {
+  try {
+    const tasks = await invoke<Task[]>("archive_project", {
+      projectPath,
+    });
+    setProjects(projectName, "tasks", tasks);
+    toast.info(`Archived done items in ${projectName}`);
+  } catch (e) {
+    toast.error(`Failed to archive: ${e}`);
+  }
+}
+
 // --- Live Updates ---
 
 export async function setupTaskListener(): Promise<UnlistenFn> {

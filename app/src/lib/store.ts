@@ -6,6 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 export type PaneType = "terminal" | "viewer";
 export type ViewerType = "code" | "markdown" | "image" | "pdf" | "diff";
+export type SessionStatus = "spawning" | "running" | "done" | "error";
 
 export interface PaneState {
   id: string;
@@ -20,6 +21,7 @@ export interface PaneState {
   activeSidebar?: string | null;
   activeOverlay?: string | null;
   pluginData?: Record<string, unknown>;
+  sessionStatus?: SessionStatus;
 }
 
 export type LayoutNode =
@@ -213,7 +215,7 @@ export function setActivePanePluginData(data: Record<string, unknown>): void {
 
 export function createPane(cwd: string, opts?: { agent?: string; effort?: string; prompt?: string }): string {
   const id = crypto.randomUUID();
-  setPanes(id, { id, cwd, paneType: "terminal", agent: opts?.agent, effort: opts?.effort, prompt: opts?.prompt, activeSidebar: null, activeOverlay: null, pluginData: {} });
+  setPanes(id, { id, cwd, paneType: "terminal", agent: opts?.agent, effort: opts?.effort, prompt: opts?.prompt, activeSidebar: null, activeOverlay: null, pluginData: {}, sessionStatus: "spawning" });
   if (!layout()) setLayout({ type: "leaf", paneId: id });
   setActivePaneId(id);
   return id;
@@ -275,6 +277,10 @@ export function setPaneCwd(paneId: string, cwd: string) {
   setPanes(paneId, "cwd", cwd);
 }
 
+export function setPaneStatus(paneId: string, status: SessionStatus) {
+  setPanes(paneId, "sessionStatus", status);
+}
+
 export function splitPane(direction: "horizontal" | "vertical") {
   const active = activePaneId();
   if (!active) return;
@@ -298,6 +304,7 @@ export function splitPane(direction: "horizontal" | "vertical") {
 }
 
 export function closePane(paneId: string) {
+  invoke("remove_pane_status", { paneId }).catch(() => {});
   batch(() => {
     if (zoomedPaneId() === paneId) setZoomedPaneId(null);
     setPanes(produce((p) => { delete p[paneId]; }));
