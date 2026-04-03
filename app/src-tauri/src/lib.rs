@@ -1437,17 +1437,20 @@ pub fn launch_client(
         std::process::exit(1);
     }
 
-    // Read ack
-    let mut ack = String::new();
-    if let Err(e) = stream.read_to_string(&mut ack) {
-        eprintln!("failed to read ack: {e}");
+    // Read response (pane ID)
+    let mut response = String::new();
+    if let Err(e) = stream.read_to_string(&mut response) {
+        eprintln!("failed to read response: {e}");
         std::process::exit(1);
     }
 
-    if ack.trim() != "ok" {
-        eprintln!("unexpected response from ordis: {ack}");
+    let pane_id = response.trim();
+    if pane_id == "error" || pane_id.is_empty() {
+        eprintln!("launch failed: {response}");
         std::process::exit(1);
     }
+
+    println!("{pane_id}");
 }
 
 #[cfg(not(unix))]
@@ -1471,6 +1474,15 @@ struct LaunchRequest {
     #[serde(default)]
     effort: Option<String>,
     #[serde(default)]
+    prompt: Option<String>,
+}
+
+#[derive(Serialize, Clone)]
+struct LaunchEvent {
+    pane_id: String,
+    cwd: String,
+    agent: Option<String>,
+    effort: Option<String>,
     prompt: Option<String>,
 }
 
@@ -1514,8 +1526,16 @@ fn start_socket_listener(handle: tauri::AppHandle) {
 
             match serde_json::from_str::<SocketMessage>(&buf) {
                 Ok(SocketMessage::Launch(req)) => {
-                    let _ = handle.emit("launch-session", req);
-                    let _ = stream.write_all(b"ok");
+                    let pane_id = uuid::Uuid::new_v4().to_string();
+                    let event = LaunchEvent {
+                        pane_id: pane_id.clone(),
+                        cwd: req.cwd,
+                        agent: req.agent,
+                        effort: req.effort,
+                        prompt: req.prompt,
+                    };
+                    let _ = handle.emit("launch-session", event);
+                    let _ = stream.write_all(pane_id.as_bytes());
                 }
                 Ok(SocketMessage::Status { pane_id }) => {
                     let state: tauri::State<'_, AppState> = handle.state::<AppState>();
@@ -1539,8 +1559,16 @@ fn start_socket_listener(handle: tauri::AppHandle) {
                     // Backward compat: try parsing as a bare LaunchRequest
                     match serde_json::from_str::<LaunchRequest>(&buf) {
                         Ok(req) => {
-                            let _ = handle.emit("launch-session", req);
-                            let _ = stream.write_all(b"ok");
+                            let pane_id = uuid::Uuid::new_v4().to_string();
+                            let event = LaunchEvent {
+                                pane_id: pane_id.clone(),
+                                cwd: req.cwd,
+                                agent: req.agent,
+                                effort: req.effort,
+                                prompt: req.prompt,
+                            };
+                            let _ = handle.emit("launch-session", event);
+                            let _ = stream.write_all(pane_id.as_bytes());
                         }
                         Err(_) => {
                             let _ = stream.write_all(b"error");

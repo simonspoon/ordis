@@ -2552,6 +2552,7 @@ dependencies = [
  "tauri-plugin-pty",
  "tauri-plugin-shell",
  "toml 0.8.2",
+ "uuid",
 ]
 
 [[package]]

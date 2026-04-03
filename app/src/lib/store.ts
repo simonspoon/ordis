@@ -213,8 +213,8 @@ export function setActivePanePluginData(data: Record<string, unknown>): void {
 
 // --- Operations ---
 
-export function createPane(cwd: string, opts?: { agent?: string; effort?: string; prompt?: string }): string {
-  const id = crypto.randomUUID();
+export function createPane(cwd: string, opts?: { id?: string; agent?: string; effort?: string; prompt?: string }): string {
+  const id = opts?.id || crypto.randomUUID();
   setPanes(id, { id, cwd, paneType: "terminal", agent: opts?.agent, effort: opts?.effort, prompt: opts?.prompt, activeSidebar: null, activeOverlay: null, pluginData: {}, sessionStatus: "spawning" });
   if (!layout()) setLayout({ type: "leaf", paneId: id });
   setActivePaneId(id);

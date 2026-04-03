@@ -248,12 +248,12 @@ export default function App() {
   // Listen for CLI launch requests
   onMount(() => {
     let unlisten: (() => void) | undefined;
-    listen<{ cwd: string; agent?: string; effort?: string; prompt?: string }>(
+    listen<{ pane_id: string; cwd: string; agent?: string; effort?: string; prompt?: string }>(
       "launch-session",
       (event) => {
-        const { cwd, agent, effort, prompt } = event.payload;
+        const { pane_id, cwd, agent, effort, prompt } = event.payload;
         setViewMode("sessions");
-        createPane(cwd, { agent: agent || undefined, effort: effort || undefined, prompt: prompt || undefined });
+        createPane(cwd, { id: pane_id, agent: agent || undefined, effort: effort || undefined, prompt: prompt || undefined });
       },
     ).then((fn) => { unlisten = fn; });
     onCleanup(() => unlisten?.());
