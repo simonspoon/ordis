@@ -218,6 +218,7 @@ export function createPane(cwd: string, opts?: { id?: string; agent?: string; ef
   setPanes(id, { id, cwd, paneType: "terminal", agent: opts?.agent, effort: opts?.effort, prompt: opts?.prompt, activeSidebar: null, activeOverlay: null, pluginData: {}, sessionStatus: "spawning" });
   if (!layout()) setLayout({ type: "leaf", paneId: id });
   setActivePaneId(id);
+  scheduleSave();
   return id;
 }
 
@@ -270,11 +271,13 @@ export function createViewerPane(filePath: string, viewerType: ViewerType, cwd?:
     }
   }
   setActivePaneId(id);
+  scheduleSave();
   return id;
 }
 
 export function setPaneCwd(paneId: string, cwd: string) {
   setPanes(paneId, "cwd", cwd);
+  scheduleSave();
 }
 
 export function setPaneStatus(paneId: string, status: SessionStatus) {
@@ -301,6 +304,7 @@ export function splitPane(direction: "horizontal" | "vertical") {
       : prev,
   );
   setActivePaneId(newId);
+  scheduleSave();
 }
 
 export function closePane(paneId: string) {
@@ -319,6 +323,7 @@ export function closePane(paneId: string) {
       if (tabId) closeTab(tabId);
     }
   });
+  scheduleSave();
 }
 
 export function updateSplitRatio(splitId: string, ratio: number) {
@@ -362,6 +367,7 @@ export function createTab(name: string, cwd: string): string {
     loadTabState(newTab);
   });
 
+  scheduleSave();
   return tabId;
 }
 
@@ -375,6 +381,7 @@ export function switchTab(tabId: string): void {
     setActiveTabId(tabId);
     loadTabState(target);
   });
+  scheduleSave();
 }
 
 export function closeTab(tabId: string): void {
@@ -410,6 +417,7 @@ export function closeTab(tabId: string): void {
 
     setTabs(remaining);
   });
+  scheduleSave();
 }
 
 export function renameTab(tabId: string, name: string): void {
@@ -719,6 +727,20 @@ export async function listLayouts(): Promise<string[]> {
 
 export async function deleteLayout(name: string): Promise<void> {
   await invoke("delete_layout", { name });
+}
+
+// --- Debounced Auto-Save ---
+
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+const SAVE_DEBOUNCE_MS = 2000;
+
+/** Schedule a debounced session save. Call after any state mutation. */
+export function scheduleSave(): void {
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    saveSession();
+    saveTimer = null;
+  }, SAVE_DEBOUNCE_MS);
 }
 
 // --- Helpers ---
