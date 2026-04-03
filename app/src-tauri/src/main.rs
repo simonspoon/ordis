@@ -32,6 +32,11 @@ enum Commands {
         #[arg(long)]
         prompt: Option<String>,
     },
+    /// Query the status of a session pane
+    Status {
+        /// Pane ID to query (UUID returned by ordis launch)
+        pane_id: String,
+    },
 }
 
 #[derive(Clone, ValueEnum)]
@@ -86,6 +91,9 @@ fn main() {
             });
 
             ordis_lib::launch_client(cwd, agent, effort.map(|e| e.to_string()), prompt);
+        }
+        Some(Commands::Status { pane_id }) => {
+            ordis_lib::status_client(pane_id);
         }
         None => {
             ordis_lib::run();

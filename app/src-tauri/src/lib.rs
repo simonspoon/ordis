@@ -1464,6 +1464,59 @@ pub fn launch_client(
     std::process::exit(1);
 }
 
+#[cfg(unix)]
+pub fn status_client(pane_id: String) {
+    use std::io::{Read as _, Write as _};
+    use std::os::unix::net::UnixStream;
+
+    let mut stream = match UnixStream::connect(SOCKET_PATH) {
+        Ok(s) => s,
+        Err(_) => {
+            eprintln!("ordis is not running (could not connect to {SOCKET_PATH})");
+            std::process::exit(1);
+        }
+    };
+
+    let request = serde_json::json!({
+        "type": "status",
+        "pane_id": pane_id,
+    });
+
+    let payload = request.to_string();
+    if let Err(e) = stream.write_all(payload.as_bytes()) {
+        eprintln!("failed to send status request: {e}");
+        std::process::exit(1);
+    }
+    if let Err(e) = stream.shutdown(std::net::Shutdown::Write) {
+        eprintln!("failed to signal end of request: {e}");
+        std::process::exit(1);
+    }
+
+    let mut response = String::new();
+    if let Err(e) = stream.read_to_string(&mut response) {
+        eprintln!("failed to read response: {e}");
+        std::process::exit(1);
+    }
+
+    let response = response.trim();
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(response) {
+        if json.get("error").is_some() {
+            eprintln!("{response}");
+            std::process::exit(1);
+        }
+        println!("{response}");
+    } else {
+        eprintln!("unexpected response: {response}");
+        std::process::exit(1);
+    }
+}
+
+#[cfg(not(unix))]
+pub fn status_client(_pane_id: String) {
+    eprintln!("ordis status is not supported on this platform");
+    std::process::exit(1);
+}
+
 // --- Socket Listener ---
 
 #[derive(Serialize, Deserialize, Clone)]
