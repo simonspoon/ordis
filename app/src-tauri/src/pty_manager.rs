@@ -62,6 +62,35 @@ impl PtySessionManager {
             sessions: Mutex::new(HashMap::new()),
         }
     }
+
+    /// Remove sessions that have exited AND have no active subscriber.
+    /// Returns the pane IDs of removed sessions.
+    pub fn sweep_exited(&self) -> Vec<String> {
+        let mut sessions = match self.sessions.lock() {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
+
+        let to_remove: Vec<String> = sessions
+            .values()
+            .filter(|s| {
+                let exited = matches!(s.status, SessionStatus::Exited(_) | SessionStatus::Error(_));
+                let no_subscriber = s
+                    .subscriber
+                    .lock()
+                    .map(|sub| sub.is_none())
+                    .unwrap_or(false);
+                exited && no_subscriber
+            })
+            .map(|s| s.pane_id.clone())
+            .collect();
+
+        for id in &to_remove {
+            sessions.remove(id);
+        }
+
+        to_remove
+    }
 }
 
 // --- Commands ---

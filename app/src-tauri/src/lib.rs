@@ -1716,6 +1716,18 @@ pub fn run() {
             let socket_handle = app.handle().clone();
             start_socket_listener(socket_handle);
 
+            let sweep_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                    let manager = sweep_handle.state::<pty_manager::PtySessionManager>();
+                    let removed = manager.sweep_exited();
+                    for pane_id in &removed {
+                        let _ = sweep_handle.emit(&format!("pty-exit-{pane_id}"), 0u32);
+                    }
+                }
+            });
+
             Ok(())
         })
         .run(tauri::generate_context!())
