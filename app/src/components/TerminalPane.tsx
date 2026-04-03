@@ -3,7 +3,7 @@ import { Terminal } from "@xterm/xterm";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
-import { spawn } from "tauri-pty";
+import { spawnPty, reattachPty, type PtyHandle, type ReattachResult } from "../lib/ptyClient";
 import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { panes, setPaneCwd, setPaneStatus, closePane, createPane, activePaneId, setActivePaneId } from "../lib/store";
@@ -29,9 +29,17 @@ export default function TerminalPane(props: Props) {
   let term: Terminal | null = null;
   let fitAddon: FitAddon | null = null;
   let searchAddon: SearchAddon | null = null;
-  let pty: ReturnType<typeof spawn> | null = null;
+  let pty: PtyHandle | null = null;
   let resizeObserver: ResizeObserver | null = null;
   let bus: ReturnType<typeof createSessionEventBus> | null = null;
+
+  let intentionalKill = false;
+
+  const killAndClose = () => {
+    intentionalKill = true;
+    if (pty) pty.kill();
+    closePane(props.paneId);
+  };
 
   const [gitInfo, setGitInfo] = createSignal<GitInfo | null>(null);
   const [searchOpen, setSearchOpen] = createSignal(false);
@@ -78,9 +86,9 @@ export default function TerminalPane(props: Props) {
     const newAgent = agent === "default" ? undefined : agent;
     const currentPaneAgent = panes[props.paneId]?.agent;
     if (newAgent === currentPaneAgent) return;
-    // Changing agent requires restarting — close old pane, create new one
+    // Changing agent requires restarting — kill old session, create new pane
     const cwd = paneCwd();
-    closePane(props.paneId);
+    killAndClose();
     setTimeout(() => createPane(cwd, { agent: newAgent }), 50);
   };
 
@@ -175,19 +183,6 @@ export default function TerminalPane(props: Props) {
 
     fitAddon.fit();
 
-    const currentCwd = paneCwd() || undefined;
-    const pane = panes[props.paneId];
-    let initialCommand = "claude --dangerously-skip-permissions";
-    if (pane?.agent) {
-      initialCommand += ` --agent ${shellEscape(pane.agent)}`;
-    }
-    if (pane?.effort) {
-      initialCommand += ` --effort ${shellEscape(pane.effort)}`;
-    }
-    if (pane?.prompt) {
-      initialCommand += ` ${shellEscape(pane.prompt)}`;
-    }
-
     // Pending snapshots: when a Read is detected, snapshot the file immediately
     // so the pre-edit content is captured BEFORE any subsequent edit lands on disk.
     const pendingSnapshots = new Map<string, string>();
@@ -253,19 +248,74 @@ export default function TerminalPane(props: Props) {
       }
     });
 
-    function attachPty(customEnv: Record<string, string>, cwd?: string, command?: string) {
+    // Wire up data and exit handlers for a pty handle
+    function wireHandlers(handle: PtyHandle) {
+      handle.onData((data) => {
+        term!.write(data);
+        bus!.feed(data);
+      });
+
+      handle.onExit(() => {
+        setPaneStatus(props.paneId, "done");
+        invoke("update_pane_status", { paneId: props.paneId, status: "done" }).catch(() => {});
+        closePane(props.paneId);
+      });
+    }
+
+    // Reattach to existing session or spawn a new one
+    async function initPty() {
+      // Try to reattach to an existing session (survives webview reload)
       try {
-        // Spawn an interactive login shell (persists after subprocess exits)
-        pty = spawn("/bin/zsh", ["-l"], {
-          cols: term!.cols,
-          rows: term!.rows,
-          cwd: cwd || undefined,
-          name: "xterm-256color",
+        const result: ReattachResult | null = await reattachPty(props.paneId);
+        if (result) {
+          pty = result.handle;
+          // Replay buffered scrollback into the terminal
+          for (const chunk of result.scrollback) {
+            term!.write(chunk);
+          }
+          wireHandlers(pty);
+          setPaneStatus(props.paneId, "running");
+          invoke("update_pane_status", { paneId: props.paneId, status: "running" }).catch(() => {});
+          return;
+        }
+      } catch {
+        // No existing session — fall through to spawn
+      }
+
+      const currentCwd = paneCwd() || undefined;
+      const pane = panes[props.paneId];
+      let initialCommand = "claude --dangerously-skip-permissions";
+      if (pane?.agent) {
+        initialCommand += ` --agent ${shellEscape(pane.agent)}`;
+      }
+      if (pane?.effort) {
+        initialCommand += ` --effort ${shellEscape(pane.effort)}`;
+      }
+      if (pane?.prompt) {
+        initialCommand += ` ${shellEscape(pane.prompt)}`;
+      }
+
+      let customEnv: Record<string, string> = {};
+      let defaultCwd: string | undefined;
+      try {
+        const raw = await invoke<string>("read_ordis_config");
+        const config = JSON.parse(raw);
+        customEnv = config.env ?? {};
+        defaultCwd = config.defaultCwd;
+      } catch {
+        // No config — use empty env
+      }
+
+      try {
+        pty = await spawnPty(props.paneId, {
+          cwd: currentCwd || defaultCwd,
           env: {
             ...customEnv,
             TERM: "xterm-256color",
             COLORTERM: "truecolor",
           },
+          cols: term!.cols,
+          rows: term!.rows,
         });
       } catch (e) {
         setPaneStatus(props.paneId, "error");
@@ -278,39 +328,17 @@ export default function TerminalPane(props: Props) {
       setPaneStatus(props.paneId, "running");
       invoke("update_pane_status", { paneId: props.paneId, status: "running" }).catch(() => {});
 
-      pty.onData((data: Uint8Array) => {
-        term!.write(new Uint8Array(data));
-        bus!.feed(data);
-      });
-
-      pty.onExit(() => {
-        // Shell exited (user typed "exit") — close the pane.
-        // Subprocess exits (Claude Code) don't reach here because
-        // the shell is spawned as a persistent login shell.
-        setPaneStatus(props.paneId, "done");
-        invoke("update_pane_status", { paneId: props.paneId, status: "done" }).catch(() => {});
-        closePane(props.paneId);
-      });
+      wireHandlers(pty);
 
       // Write the initial command to the shell after it's ready
-      if (command) {
+      if (initialCommand) {
         setTimeout(() => {
-          if (pty) pty.write(command + "\n");
+          if (pty) pty.write(initialCommand + "\n");
         }, 150);
       }
     }
 
-    // Load custom env vars from ordis config, then spawn PTY
-    function spawnWithEnv(customEnv: Record<string, string>, defaultCwd?: string) {
-      attachPty(customEnv, currentCwd || defaultCwd, initialCommand);
-    }
-
-    invoke<string>("read_ordis_config")
-      .then((raw) => {
-        const config = JSON.parse(raw);
-        spawnWithEnv(config.env ?? {}, config.defaultCwd);
-      })
-      .catch(() => spawnWithEnv({}));
+    initPty();
 
     resizeObserver = new ResizeObserver(() => {
       if (fitAddon && containerRef.offsetWidth > 0 && containerRef.offsetHeight > 0) {
@@ -352,7 +380,14 @@ export default function TerminalPane(props: Props) {
     resizeObserver?.disconnect();
     bus?.destroy();
     if (pty) {
-      try { pty.kill(); } catch { /* already dead */ }
+      if (intentionalKill) {
+        // Already killed via killAndClose(), just cleanup listeners
+        pty.destroy();
+      } else {
+        // Webview reload or view switch — keep session alive in Rust
+        pty.detach();
+        pty.destroy();
+      }
     }
     term?.dispose();
   });
@@ -400,7 +435,7 @@ export default function TerminalPane(props: Props) {
             </div>
           </Show>
         </div>
-        <button class="pane-close-btn" onClick={() => closePane(props.paneId)} title="Close pane">
+        <button class="pane-close-btn" onClick={() => killAndClose()} title="Close pane">
           x
         </button>
       </div>

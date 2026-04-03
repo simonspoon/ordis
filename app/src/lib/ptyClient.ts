@@ -167,9 +167,14 @@ export async function spawnPty(
   return handle;
 }
 
+export interface ReattachResult {
+  handle: PtyHandle;
+  scrollback: Uint8Array[];
+}
+
 export async function reattachPty(
   paneId: string,
-): Promise<PtyHandle | null> {
+): Promise<ReattachResult | null> {
   const sessions = await invoke<RawSessionInfo[]>("pty_list");
   const found = sessions.find((s) => s.paneId === paneId);
   if (!found) {
@@ -177,9 +182,9 @@ export async function reattachPty(
   }
 
   const handle = createHandle(found.paneId, found.pid);
-  await handle.attach();
+  const scrollback = await handle.attach();
 
-  return handle;
+  return { handle, scrollback };
 }
 
 export async function listSessions(): Promise<SessionInfo[]> {
