@@ -2541,6 +2541,7 @@ dependencies = [
  "base64 0.22.1",
  "clap",
  "dirs",
+ "portable-pty",
  "serde",
  "serde_json",
  "similar",
@@ -2551,6 +2552,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-pty",
  "tauri-plugin-shell",
+ "tokio",
  "toml 0.8.2",
  "uuid",
 ]

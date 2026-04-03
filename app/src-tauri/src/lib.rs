@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager, State};
 use tauri_plugin_notification::NotificationExt;
 
+mod pty_manager;
+
 // --- Config ---
 
 #[derive(Deserialize, Serialize, Default)]
@@ -1652,6 +1654,7 @@ pub fn run() {
             cwd: Mutex::new(resolve_default_cwd()),
             pane_statuses: Mutex::new(HashMap::new()),
         })
+        .manage(pty_manager::PtySessionManager::new())
         .invoke_handler(tauri::generate_handler![
             get_cwd,
             set_cwd,
@@ -1698,6 +1701,13 @@ pub fn run() {
             update_pane_status,
             remove_pane_status,
             get_pane_status,
+            pty_manager::pty_spawn,
+            pty_manager::pty_write,
+            pty_manager::pty_resize,
+            pty_manager::pty_kill,
+            pty_manager::pty_list,
+            pty_manager::pty_attach,
+            pty_manager::pty_detach,
         ])
         .setup(|app| {
             let handle = app.handle().clone();
